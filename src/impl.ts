@@ -55,34 +55,82 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
   return output.stdout;
 }
 
+function getNodeBinaryCacheName(
+  version: string,
+  platform: string
+): { name: string; ext: string } {
+  const ext = platform.startsWith("win") ? ".exe" : "";
+  return { name: `node-v${version}-${platform}${ext}`, ext };
+}
+
+async function getNodeBinaryFromCache(
+  cacheDir: string,
+  version: string,
+  platform: string,
+  targetPath: string
+): Promise<string> {
+  const { name, ext } = getNodeBinaryCacheName(version, platform);
+  const cacheSourceFile = path.join(cacheDir, name);
+  const targetFile = `${targetPath}-${platform}${ext}`;
+  await fs.copyFile(cacheSourceFile, targetFile);
+  return targetFile;
+}
+
 async function getNodeBinary(
   version: string,
   platform: string,
   targetPath: string,
   cacheDir: string
 ): Promise<string> {
-  const suffix = platform.startsWith("win") ? "zip" : "tar.xz";
-  const remoteArchiveName = `node-v${version}-${platform}.${suffix}`;
+  try {
+    return await getNodeBinaryFromCache(
+      cacheDir,
+      version,
+      platform,
+      targetPath
+    );
+  } catch (err) {
+    if ((err as any).code !== "ENOENT") {
+      throw err;
+    }
+  }
+
+  const remoteArchiveName = `node-v${version}-${platform}.${
+    platform.startsWith("win") ? "zip" : "tar.xz"
+  }`;
   await fs.mkdir(cacheDir, { recursive: true });
   const nodeDir = await fs.mkdtemp(path.join(cacheDir, remoteArchiveName));
-  // TODO: Check cache first!
   const url = `https://nodejs.org/dist/v${version}/${remoteArchiveName}`;
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Failed to fetch ${url}`);
-  if (!resp.body) throw new Error(`Response body is null: ${url}`);
+  if (!resp.ok)
+    throw new Error(
+      `Failed to fetch ${url}: ${resp.status} ${resp.statusText}`
+    );
+  if (!resp.body)
+    throw new Error(
+      `Response body is null for ${url}: ${resp.status} ${resp.statusText}`
+    );
 
   const stream = createWriteStream(path.join(nodeDir, remoteArchiveName));
   await finished(Readable.fromWeb(resp.body).pipe(stream));
   let sourceFile;
-  let targetFile;
+  const cacheTargetFile = path.join(
+    cacheDir,
+    getNodeBinaryCacheName(version, platform).name
+  );
+
+  // There's a slight chance of a race condition regarding all write operations
+  // for the `cacheTargetFile` below (fs.write() and fs.copy()) when concurrent
+  // fossilize instances try to write to the same file. We may add a try-catch
+  // block here to recover but we'll cross that bridge when we get there.
+
   if (platform.startsWith("win")) {
+    // TODO: Use native unzip
     await run("unzip", "-qq", stream.path as string, "-d", nodeDir);
     sourceFile = path.join(nodeDir, `node-v${version}-${platform}`, "node.exe");
-    targetFile = `${targetPath}-${platform}.exe`;
     const data = await fs.readFile(sourceFile);
     const unsigned = signatureSet(data, null);
-    await fs.writeFile(targetFile, Buffer.from(unsigned));
-    console.log("Signature removed from Win PE binary", targetFile);
+    await fs.writeFile(cacheTargetFile, Buffer.from(unsigned));
   } else {
     // TODO: Use node native tar - https://www.npmjs.com/package/tar
     await run("tar", "-xf", stream.path as string, "-C", nodeDir);
@@ -92,21 +140,22 @@ async function getNodeBinary(
       "bin",
       "node"
     );
-    targetFile = `${targetPath}-${platform}`;
   }
 
   if (platform.startsWith("darwin")) {
     const unsigned = unsign(await fs.readFile(sourceFile));
     if (!unsigned)
       throw new Error(`Failed to unsign macOS binary: ${sourceFile}`);
-    await fs.writeFile(targetFile, Buffer.from(unsigned));
-    console.log("Signature removed from macOS binary", targetFile);
+    await fs.writeFile(cacheTargetFile, Buffer.from(unsigned));
   } else {
-    await fs.copyFile(sourceFile, targetFile);
+    await fs.copyFile(sourceFile, cacheTargetFile);
   }
-
-  await fs.rm(nodeDir, { recursive: true });
-  return targetFile;
+  try {
+    await fs.rm(nodeDir, { recursive: true });
+  } catch (err) {
+    console.error(`Failed to remove ${nodeDir}: ${err}`);
+  }
+  return await getNodeBinaryFromCache(cacheDir, version, platform, targetPath);
 }
 
 export default async function (
@@ -211,14 +260,15 @@ export default async function (
   await run(process.execPath, "--experimental-sea-config", seaConfigPath);
   await Promise.all(
     platforms.map(async (platform) => {
-      console.log(`Creating binary for ${platform}...`);
+      const outputPath = path.join(flags.outDir, outputName);
+      console.log(`Creating binary for ${platform} (${outputPath})...`);
       const nodeBinary = await getNodeBinary(
         flags.nodeVersion,
         platform,
         path.join(flags.outDir, outputName),
         flags.cacheDir
       );
-      console.log("Injecting blob into node executable...");
+      console.log(`Injecting blob into node executable: ${nodeBinary}`);
       await inject(nodeBinary, "NODE_SEA_BLOB", await fs.readFile(blobPath), {
         // NOTE: Split the string into 2 as `postject` naively looks for that exact string
         //       for the fuse and gets confused when we try to bundle fossilize.
