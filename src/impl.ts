@@ -8,7 +8,7 @@ import { finished } from "node:stream/promises";
 import { promisify } from "node:util";
 import { signatureSet } from "portable-executable-signature";
 import { inject } from "postject";
-import yauzl from "yauzl";
+import { untar, unzip } from "./archive-util";
 import type { LocalContext } from "./context";
 
 interface CommandFlags {
@@ -35,39 +35,6 @@ const PACKAGE_JSON = "package.json";
 const SEA_CONFIG_JSON = "sea-config.json";
 const SEA_BLOB = "sea.blob";
 const NODE_SEA_FUSE = "fce680ab2cc467b6e072b8b5df1996b2";
-
-const yauzlOpen = promisify(yauzl.open);
-async function unzip(sourceFile: string, targetFile: string): Promise<Buffer> {
-  let found = false;
-  // @ts-expect-error -- For some reason, TS is selecting the wrong overload for yauzl.open with promisify above
-  const zipfile = await yauzlOpen(sourceFile, { lazyEntries: true });
-  const { resolve, reject, promise } = Promise.withResolvers<Buffer>();
-  zipfile.on("entry", (entry) => {
-    if (entry.fileName !== targetFile) {
-      zipfile.readEntry();
-      return;
-    }
-    zipfile.openReadStream(entry, async (err, readStream) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      found = true;
-      resolve(Buffer.concat(await Array.fromAsync(readStream)));
-    });
-  });
-  zipfile.once("end", () => {
-    if (!found)
-      reject(
-        new Error(
-          `File "${targetFile}" not found in zip archive: ${sourceFile}`
-        )
-      );
-  });
-  zipfile.readEntry();
-
-  return promise;
-}
 
 const execFileAsync = promisify(execFile);
 async function run(cmd: string, ...args: string[]): Promise<string> {
@@ -129,6 +96,10 @@ async function getNodeBinary(
     }
   }
 
+  // Note for the future: There are about ~50% smaller windows
+  // archives available with the 7z format but decompressing 7z
+  // without any native code only seems to be available through
+  // a WASM port, which is about 1.5MB. Not sure worth it.
   const remoteArchiveName = `node-v${version}-${platform}.${
     platform.startsWith("win") ? "zip" : "tar.xz"
   }`;
@@ -145,8 +116,6 @@ async function getNodeBinary(
       `Response body is null for ${url}: ${resp.status} ${resp.statusText}`
     );
 
-  const stream = createWriteStream(path.join(nodeDir, remoteArchiveName));
-  await finished(Readable.fromWeb(resp.body).pipe(stream));
   let sourceFile;
   const cacheTargetFile = path.join(
     cacheDir,
@@ -159,27 +128,23 @@ async function getNodeBinary(
   // block here to recover but we'll cross that bridge when we get there.
 
   if (platform.startsWith("win")) {
+    const stream = createWriteStream(path.join(nodeDir, remoteArchiveName));
+    await finished(Readable.fromWeb(resp.body).pipe(stream));
     sourceFile = path.join(`node-v${version}-${platform}`, "node.exe");
     const data = await unzip(stream.path as string, sourceFile);
     const unsigned = signatureSet(data, null);
     await fs.writeFile(cacheTargetFile, Buffer.from(unsigned));
   } else {
-    // TODO: Use node native tar - https://www.npmjs.com/package/tar
-    await run("tar", "-xf", stream.path as string, "-C", nodeDir);
-    sourceFile = path.join(
-      nodeDir,
-      `node-v${version}-${platform}`,
-      "bin",
-      "node"
-    );
+    sourceFile = path.join(`node-v${version}-${platform}`, "bin", "node");
+    let nodeBuffer: Buffer = await untar(resp.body, sourceFile);
     if (platform.startsWith("darwin")) {
-      const unsigned = unsign(await fs.readFile(sourceFile));
-      if (!unsigned)
+      const unsigned = unsign(nodeBuffer.buffer);
+      if (!unsigned) {
         throw new Error(`Failed to unsign macOS binary: ${sourceFile}`);
-      await fs.writeFile(cacheTargetFile, Buffer.from(unsigned));
-    } else {
-      await fs.copyFile(sourceFile, cacheTargetFile);
+      }
+      nodeBuffer = Buffer.from(unsigned);
     }
+    await fs.writeFile(cacheTargetFile, nodeBuffer);
   }
 
   try {
@@ -220,6 +185,7 @@ export default async function (
   const seaConfigPath = path.join(flags.outDir, SEA_CONFIG_JSON);
   const blobPath = path.join(flags.outDir, SEA_BLOB);
 
+  console.log(`Cleaning up ${flags.outDir}...`);
   await fs
     .rm(flags.outDir, { recursive: true })
     .catch(() => {})
