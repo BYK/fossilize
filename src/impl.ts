@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import * as esbuild from "esbuild";
 import { inject } from "postject";
@@ -95,6 +96,7 @@ export default async function (
   if (flags.noBundle) {
     jsBundlePath = entrypointPath;
   } else {
+    console.log(`Bundling ${entrypointPath}...`);
     jsBundlePath = path.join(flags.outDir, `${outputName}.cjs`);
     const bundleResult = await esbuild.build({
       logLevel: "info",
@@ -105,7 +107,7 @@ export default async function (
       target: "node22",
       format: "cjs",
       treeShaking: true,
-      inject: ["./import-meta-url.js"],
+      inject: [fileURLToPath(import.meta.resolve("../import-meta-url.js"))],
       define: {
         "import.meta.url": "import_meta_url",
         "process.env.npm_package_version": JSON.stringify(appVersion),

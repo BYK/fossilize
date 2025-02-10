@@ -43,20 +43,11 @@ async function getNodeBinaryFromCache(
   await fs.copyFile(cacheSourceFile, targetFile);
   return targetFile;
 }
+
 const NODE_VERSIONS_INDEX_URL =
   "https://nodejs.org/download/release/index.json";
 const NODE_VERSION_REGEX = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/i;
-export async function getNodeBinary(
-  version: string,
-  platform: string,
-  targetPath: string,
-  cacheDir: string | null
-): Promise<string> {
-  if (cacheDir == null) {
-    // this means don't use cach
-    // we still need a temp directory to download the node binary
-    cacheDir = tmpdir();
-  }
+export async function _resolveNodeVersion(version: string): Promise<string> {
   let resolvedVersion: string | undefined = version;
   if (version === "local") {
     resolvedVersion = process.version.slice(1);
@@ -94,11 +85,7 @@ export async function getNodeBinary(
   } else {
     resolvedVersion = versionBits.join(".");
   }
-
-  console.log(
-    `Using NodeJS version: ${resolvedVersion} (resolved from '${version}')`
-  );
-
+  console.log(`Resolved NodeJS version '${version}' to ${resolvedVersion}`);
   const [nodeVersionMajor, nodeVersionMinor] = resolvedVersion
     .match(NODE_VERSION_REGEX)!
     .slice(1, 3)
@@ -112,6 +99,29 @@ export async function getNodeBinary(
       `NodeJS version ${resolvedVersion} does not support SEA.\nSee https://nodejs.org/api/single-executable-applications.html#single-executable-applications`
     );
   }
+  return resolvedVersion;
+}
+const _VERSION_CACHE: Map<string, Promise<string>> = new Map();
+export function resolveNodeVersion(version: string): Promise<string> {
+  if (!_VERSION_CACHE.has(version)) {
+    _VERSION_CACHE.set(version, _resolveNodeVersion(version));
+  }
+  return _VERSION_CACHE.get(version)!;
+}
+
+export async function getNodeBinary(
+  version: string,
+  platform: string,
+  targetPath: string,
+  cacheDir: string | null
+): Promise<string> {
+  if (cacheDir == null) {
+    // this means don't use cach
+    // we still need a temp directory to download the node binary
+    cacheDir = tmpdir();
+  }
+
+  const resolvedVersion = await resolveNodeVersion(version);
 
   try {
     return await getNodeBinaryFromCache(

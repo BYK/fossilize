@@ -8,7 +8,8 @@
     "type": "module",
     "version": "0.1.0",
     "files": [
-        "dist"
+        "dist",
+        "import-meta-url.js"
     ],
     "main": "dist/cli.js",
     "bin": {
