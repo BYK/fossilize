@@ -1,15 +1,11 @@
-import * as esbuild from "esbuild";
-import { unsign } from "macho-unsign";
 import { execFile } from "node:child_process";
-import { createWriteStream, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
-import { finished } from "node:stream/promises";
 import { promisify } from "node:util";
-import { signatureSet } from "portable-executable-signature";
+import * as esbuild from "esbuild";
 import { inject } from "postject";
-import { untar, unzip } from "./archive-util";
 import type { LocalContext } from "./context";
+import { getNodeBinary } from "./node-util";
 
 interface CommandFlags {
   readonly nodeVersion: string;
@@ -32,6 +28,9 @@ export type SEAConfig = {
   assets?: Record<string, string>;
 };
 
+type ExecResult = { stdout: string; stderr: string };
+type ExecError = Error & { code: string } & ExecResult;
+
 const PACKAGE_JSON = "package.json";
 const SEA_CONFIG_JSON = "sea-config.json";
 const SEA_BLOB = "sea.blob";
@@ -39,15 +38,14 @@ const NODE_SEA_FUSE = "fce680ab2cc467b6e072b8b5df1996b2";
 
 const execFileAsync = promisify(execFile);
 async function run(cmd: string, ...args: string[]): Promise<string> {
-  let output;
+  let output: ExecResult;
   try {
     output = await execFileAsync(cmd, args, { encoding: "utf8" });
-  } catch (err: any) {
-    // todo: type this error
+  } catch (err) {
     console.error(`Failed to \`run ${cmd} ${args.join(" ")}\``);
-    console.error(err.stdout);
-    console.error(err.stderr);
-    process.exit(err.code);
+    console.error((err as ExecError).stdout);
+    console.error((err as ExecError).stderr);
+    process.exit((err as ExecError).code);
   }
   if (output.stdout.trim()) {
     console.log(output.stdout);
@@ -55,105 +53,6 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
     console.log(`> ${[cmd, ...args].join(" ")}`);
   }
   return output.stdout;
-}
-
-function getNodeBinaryCacheName(
-  version: string,
-  platform: string
-): { name: string; ext: string } {
-  const ext = platform.startsWith("win") ? ".exe" : "";
-  return { name: `node-v${version}-${platform}${ext}`, ext };
-}
-
-async function getNodeBinaryFromCache(
-  cacheDir: string,
-  version: string,
-  platform: string,
-  targetPath: string
-): Promise<string> {
-  const { name, ext } = getNodeBinaryCacheName(version, platform);
-  const cacheSourceFile = path.join(cacheDir, name);
-  const targetFile = `${targetPath}-${platform}${ext}`;
-  await fs.copyFile(cacheSourceFile, targetFile);
-  return targetFile;
-}
-
-async function getNodeBinary(
-  version: string,
-  platform: string,
-  targetPath: string,
-  cacheDir: string
-): Promise<string> {
-  try {
-    return await getNodeBinaryFromCache(
-      cacheDir,
-      version,
-      platform,
-      targetPath
-    );
-  } catch (err) {
-    if ((err as any).code !== "ENOENT") {
-      throw err;
-    }
-  }
-
-  // Note for the future: There are about ~50% smaller windows
-  // archives available with the 7z format but decompressing 7z
-  // without any native code only seems to be available through
-  // a WASM port, which is about 1.5MB. Not sure worth it.
-  const remoteArchiveName = `node-v${version}-${platform}.${
-    platform.startsWith("win") ? "zip" : "tar.xz"
-  }`;
-  await fs.mkdir(cacheDir, { recursive: true });
-  const nodeDir = await fs.mkdtemp(path.join(cacheDir, remoteArchiveName));
-  const url = `https://nodejs.org/dist/v${version}/${remoteArchiveName}`;
-  const resp = await fetch(url);
-  if (!resp.ok)
-    throw new Error(
-      `Failed to fetch ${url}: ${resp.status} ${resp.statusText}`
-    );
-  if (!resp.body)
-    throw new Error(
-      `Response body is null for ${url}: ${resp.status} ${resp.statusText}`
-    );
-
-  let sourceFile;
-  const cacheTargetFile = path.join(
-    cacheDir,
-    getNodeBinaryCacheName(version, platform).name
-  );
-
-  // There's a slight chance of a race condition regarding all write operations
-  // for the `cacheTargetFile` below (fs.write() and fs.copy()) when concurrent
-  // fossilize instances try to write to the same file. We may add a try-catch
-  // block here to recover but we'll cross that bridge when we get there.
-
-  if (platform.startsWith("win")) {
-    const stream = createWriteStream(path.join(nodeDir, remoteArchiveName));
-    await finished(Readable.fromWeb(resp.body).pipe(stream));
-    sourceFile = path.join(`node-v${version}-${platform}`, "node.exe");
-    const data = await unzip(stream.path as string, sourceFile);
-    const unsigned = signatureSet(data, null);
-    await fs.writeFile(cacheTargetFile, Buffer.from(unsigned));
-  } else {
-    sourceFile = path.join(`node-v${version}-${platform}`, "bin", "node");
-    let nodeBuffer: Buffer = await untar(resp.body, sourceFile);
-    if (platform.startsWith("darwin")) {
-      const unsigned = unsign(nodeBuffer.buffer);
-      if (!unsigned) {
-        throw new Error(`Failed to unsign macOS binary: ${sourceFile}`);
-      }
-      nodeBuffer = Buffer.from(unsigned);
-    }
-    await fs.writeFile(cacheTargetFile, nodeBuffer);
-  }
-
-  try {
-    await fs.rm(nodeDir, { recursive: true });
-  } catch (err) {
-    console.error(`Failed to remove ${nodeDir}: ${err}`);
-  }
-  return await getNodeBinaryFromCache(cacheDir, version, platform, targetPath);
 }
 
 export default async function (
@@ -192,7 +91,7 @@ export default async function (
     .catch(() => {})
     .finally(() => fs.mkdir(flags.outDir, { recursive: true }));
 
-  let jsBundlePath;
+  let jsBundlePath: string;
   if (flags.noBundle) {
     jsBundlePath = entrypointPath;
   } else {
@@ -265,7 +164,7 @@ export default async function (
         flags.nodeVersion,
         platform,
         path.join(flags.outDir, outputName),
-        flags.cacheDir
+        flags.noCache ? null : flags.cacheDir
       );
       console.log(`Injecting blob into node executable: ${fossilizedBinary}`);
       await inject(
@@ -284,14 +183,16 @@ export default async function (
       console.log("Created executable", fossilizedBinary);
       await run("chmod", "+x", fossilizedBinary);
       if (!flags.sign) {
-        console.log("Skipping signing due, add `--sign` to sign the binary");
+        console.log("Skipping signing, add `--sign` to sign the binary");
         if (platform.startsWith("darwin")) {
           console.warn(
             `macOS binaries must be signed to run. You can run \`spctl --add ${fossilizedBinary}\` to add the binary to your system's trusted binaries for testing.`
           );
         }
         return;
-      } else if (platform.startsWith("win")) {
+      }
+
+      if (platform.startsWith("win")) {
         console.warn(
           "Signing is not supported on Windows, you will need to sign the binary yourself."
         );
@@ -346,9 +247,6 @@ export default async function (
           zipFile
         );
         await fs.rm(zipFile);
-      }
-      if (platform.startsWith("windows")) {
-        // TODO: Sign Windows binaries
       }
     })
   );

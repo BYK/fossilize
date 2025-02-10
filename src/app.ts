@@ -21,9 +21,7 @@ const command = buildCommand({
         kind: "parsed",
         parse: String,
         brief: "NodeJS version to fossilize with",
-        // TODO: Make this dynamic to get latest version
-        // TODO: Also allow "local" to use the node version on the system - this should limit the platforms to the current system
-        default: "22.11.0",
+        default: "local",
       },
       platforms: {
         kind: "parsed",

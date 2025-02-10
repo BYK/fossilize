@@ -1,7 +1,7 @@
-import { Writable } from "stream";
+import { Writable } from "node:stream";
+import { promisify } from "node:util";
 import * as tar from "tar-stream";
-import { promisify } from "util";
-import type XZDecompress from "xz-decompress";
+import XZDecompress from "xz-decompress";
 import yauzl from "yauzl";
 
 const yauzlOpen = promisify(yauzl.open);

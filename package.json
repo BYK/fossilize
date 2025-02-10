@@ -1,7 +1,9 @@
 {
     "name": "fossilize",
-    "author": "Burak Yigit Kaya <ben@byk.im>",
+    "author": "Burak Yigit Kaya <ben@byk.im> (https://byk.im)",
     "description": "Create Node SEA binaries across platforms with ease",
+    "homepage": "https://github.com/BYK/fossilize",
+    "repository": "github:BYK/fossilize",
     "license": "MIT",
     "type": "module",
     "version": "0.1.0",
