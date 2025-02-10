@@ -42,10 +42,12 @@
         "esbuild": "^0.25.0",
         "macho-unsign": "^2.0.6",
         "portable-executable-signature": "^2.0.6",
-        "postject": "^1.0.0-alpha.6"
+        "postject": "^1.0.0-alpha.6",
+        "yauzl": "^3.2.0"
     },
     "devDependencies": {
         "@types/node": "22.x",
+        "@types/yauzl": "^2.10.3",
         "tsup": "^6.7.0",
         "typescript": "5.6.x"
     }
