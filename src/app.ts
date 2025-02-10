@@ -68,6 +68,12 @@ const command = buildCommand({
         brief: "Do not bundle the entrypoint using esbuild",
         optional: false,
       },
+      sign: {
+        kind: "boolean",
+        brief: "Skip signing for macOS and Windows",
+        optional: false,
+        default: false,
+      },
     },
     aliases: {
       n: "nodeVersion",

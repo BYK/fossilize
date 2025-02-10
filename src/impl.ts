@@ -20,6 +20,7 @@ interface CommandFlags {
   readonly cacheDir: string;
   readonly noCache?: boolean;
   readonly noBundle: boolean;
+  readonly sign: boolean;
 }
 
 export type SEAConfig = {
@@ -260,23 +261,43 @@ export default async function (
     platforms.map(async (platform) => {
       const outputPath = path.join(flags.outDir, outputName);
       console.log(`Creating binary for ${platform} (${outputPath})...`);
-      const nodeBinary = await getNodeBinary(
+      const fossilizedBinary = await getNodeBinary(
         flags.nodeVersion,
         platform,
         path.join(flags.outDir, outputName),
         flags.cacheDir
       );
-      console.log(`Injecting blob into node executable: ${nodeBinary}`);
-      await inject(nodeBinary, "NODE_SEA_BLOB", await fs.readFile(blobPath), {
-        // NOTE: Split the string into 2 as `postject` naively looks for that exact string
-        //       for the fuse and gets confused when we try to bundle fossilize.
-        sentinelFuse: `NODE_SEA_FUSE_${NODE_SEA_FUSE}`,
-        machoSegmentName: platform.startsWith("darwin")
-          ? "NODE_SEA"
-          : undefined,
-      });
-      console.log("Created executable", nodeBinary);
-      await run("chmod", "+x", nodeBinary);
+      console.log(`Injecting blob into node executable: ${fossilizedBinary}`);
+      await inject(
+        fossilizedBinary,
+        "NODE_SEA_BLOB",
+        await fs.readFile(blobPath),
+        {
+          // NOTE: Split the string into 2 as `postject` naively looks for that exact string
+          //       for the fuse and gets confused when we try to bundle fossilize.
+          sentinelFuse: `NODE_SEA_FUSE_${NODE_SEA_FUSE}`,
+          machoSegmentName: platform.startsWith("darwin")
+            ? "NODE_SEA"
+            : undefined,
+        }
+      );
+      console.log("Created executable", fossilizedBinary);
+      await run("chmod", "+x", fossilizedBinary);
+      if (!flags.sign) {
+        console.log("Skipping signing due, add `--sign` to sign the binary");
+        if (platform.startsWith("darwin")) {
+          console.warn(
+            `macOS binaries must be signed to run. You can run \`spctl --add ${fossilizedBinary}\` to add the binary to your system's trusted binaries for testing.`
+          );
+        }
+        return;
+      } else if (platform.startsWith("win")) {
+        console.warn(
+          "Signing is not supported on Windows, you will need to sign the binary yourself."
+        );
+        return;
+      }
+
       if (platform.startsWith("darwin")) {
         const {
           APPLE_TEAM_ID,
@@ -291,7 +312,7 @@ export default async function (
           console.info({ APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD });
           return;
         }
-        console.log(`Signing ${nodeBinary}...`);
+        console.log(`Signing ${fossilizedBinary}...`);
         await run(
           "rcodesign",
           "sign",
@@ -304,7 +325,7 @@ export default async function (
           "--for-notarization",
           "-e",
           path.join(import.meta.dirname, "entitlements.plist"),
-          nodeBinary
+          fossilizedBinary
         );
         if (!APPLE_API_KEY_PATH) {
           console.warn(
@@ -313,8 +334,9 @@ export default async function (
           console.info({ APPLE_API_KEY_PATH });
           return;
         }
-        const zipFile = `${nodeBinary}.zip`;
-        await run("zip", zipFile, nodeBinary);
+        // TODO: Use JS-based zip instead of shelling out
+        const zipFile = `${fossilizedBinary}.zip`;
+        await run("zip", zipFile, fossilizedBinary);
         await run(
           "rcodesign",
           "notary-submit",
@@ -324,6 +346,9 @@ export default async function (
           zipFile
         );
         await fs.rm(zipFile);
+      }
+      if (platform.startsWith("windows")) {
+        // TODO: Sign Windows binaries
       }
     })
   );
