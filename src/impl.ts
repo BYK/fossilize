@@ -209,11 +209,9 @@ export default async function (
           APPLE_API_KEY_PATH,
         } = process.env;
         if (!APPLE_TEAM_ID || !APPLE_CERT_PATH || !APPLE_CERT_PASSWORD) {
-          console.warn(
-            "Missing required environment variables for macOS signing, you won't be able to use this binary until you sign it yourself."
+          throw new Error(
+            "Missing required environment variables for macOS signing (at least one of APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD)"
           );
-          console.info({ APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD });
-          return;
         }
         console.log(`Signing ${fossilizedBinary}...`);
         await run(
@@ -234,7 +232,6 @@ export default async function (
           console.warn(
             "Missing required environment variable for macOS notarization, you won't be able to notarize this binary which will annoy people trying to run it."
           );
-          console.info({ APPLE_API_KEY_PATH });
           return;
         }
         // TODO: Use JS-based zip instead of shelling out
