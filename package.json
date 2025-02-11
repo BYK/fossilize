@@ -17,7 +17,8 @@
     ],
     "files": [
         "dist",
-        "import-meta-url.js"
+        "import-meta-url.js",
+        "entitlements.plist"
     ],
     "main": "dist/cli.js",
     "bin": {
