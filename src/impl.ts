@@ -66,7 +66,7 @@ export default async function (
   const entrypointStat = await fs.stat(entrypoint);
   let entrypointPath = entrypoint;
   let appVersion = "0.0.0";
-  let outputName = path.basename(entrypoint).split(".")[0];
+  let outputName: string | undefined;
   if (entrypointStat.isDirectory()) {
     const packageJson = JSON.parse(
       await fs.readFile(path.join(entrypoint, PACKAGE_JSON), "utf-8")
@@ -75,6 +75,8 @@ export default async function (
     outputName = packageJson.name.split("/").pop();
     entrypointPath =
       (outputName && packageJson.bin?.[outputName]) || packageJson.main;
+  } else {
+    outputName = path.basename(entrypoint).split(".")[0];
   }
   if (!outputName) {
     outputName = "bundled";
@@ -226,7 +228,7 @@ export default async function (
         APPLE_CERT_PASSWORD,
         "--for-notarization",
         "-e",
-        path.join(import.meta.dirname, "entitlements.plist"),
+        fileURLToPath(import.meta.resolve("../entitlements.plist")),
         fossilizedBinary
       );
       if (!APPLE_API_KEY_PATH) {
