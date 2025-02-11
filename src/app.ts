@@ -1,6 +1,5 @@
 import { buildApplication, buildCommand } from "@stricli/core";
-import { name, version, description } from "../package.json";
-import { tmpdir } from "node:os";
+import { description, name, version } from "../package.json";
 
 const command = buildCommand({
   loader: async () => import("./impl"),
@@ -72,12 +71,19 @@ const command = buildCommand({
         optional: false,
         default: false,
       },
+      concurrencyLimit: {
+        kind: "parsed",
+        parse: Number,
+        brief: "Limit the number of concurrent downloads or builds",
+        default: "3",
+      },
     },
     aliases: {
       n: "nodeVersion",
       p: "platforms",
       a: "assets",
       m: "assetManifest",
+      l: "concurrencyLimit",
     },
   },
   docs: {

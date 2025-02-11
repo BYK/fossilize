@@ -7,6 +7,7 @@ import * as esbuild from "esbuild";
 import { inject } from "postject";
 import type { LocalContext } from "./context";
 import { getNodeBinary } from "./node-util";
+import pLimit from "p-limit";
 
 interface CommandFlags {
   readonly nodeVersion: string;
@@ -18,6 +19,7 @@ interface CommandFlags {
   readonly noCache?: boolean;
   readonly noBundle: boolean;
   readonly sign: boolean;
+  readonly concurrencyLimit: number;
 }
 
 export type SEAConfig = {
@@ -158,96 +160,100 @@ export default async function (
 
   await fs.writeFile(seaConfigPath, JSON.stringify(seaConfig));
   await run(process.execPath, "--experimental-sea-config", seaConfigPath);
-  await Promise.all(
-    platforms.map(async (platform) => {
-      const outputPath = path.join(flags.outDir, outputName);
-      console.log(`Creating binary for ${platform} (${outputPath})...`);
-      const fossilizedBinary = await getNodeBinary(
-        flags.nodeVersion,
-        platform,
-        path.join(flags.outDir, outputName),
-        flags.noCache ? null : flags.cacheDir
-      );
-      console.log(`Injecting blob into node executable: ${fossilizedBinary}`);
-      await inject(
-        fossilizedBinary,
-        "NODE_SEA_BLOB",
-        await fs.readFile(blobPath),
-        {
-          // NOTE: Split the string into 2 as `postject` naively looks for that exact string
-          //       for the fuse and gets confused when we try to bundle fossilize.
-          sentinelFuse: `NODE_SEA_FUSE_${NODE_SEA_FUSE}`,
-          machoSegmentName: platform.startsWith("darwin")
-            ? "NODE_SEA"
-            : undefined,
-        }
-      );
-      console.log("Created executable", fossilizedBinary);
-      await run("chmod", "+x", fossilizedBinary);
-      if (!flags.sign) {
-        console.log("Skipping signing, add `--sign` to sign the binary");
-        if (platform.startsWith("darwin")) {
-          console.warn(
-            `macOS binaries must be signed to run. You can run \`spctl --add ${fossilizedBinary}\` to add the binary to your system's trusted binaries for testing.`
-          );
-        }
-        return;
+  const createBinaryForPlatform = async (platform: string): Promise<void> => {
+    const outputPath = path.join(flags.outDir, outputName);
+    console.log(`Creating binary for ${platform} (${outputPath})...`);
+    const fossilizedBinary = await getNodeBinary(
+      flags.nodeVersion,
+      platform,
+      path.join(flags.outDir, outputName),
+      flags.noCache ? null : flags.cacheDir
+    );
+    console.log(`Injecting blob into node executable: ${fossilizedBinary}`);
+    await inject(
+      fossilizedBinary,
+      "NODE_SEA_BLOB",
+      await fs.readFile(blobPath),
+      {
+        // NOTE: Split the string into 2 as `postject` naively looks for that exact string
+        //       for the fuse and gets confused when we try to bundle fossilize.
+        sentinelFuse: `NODE_SEA_FUSE_${NODE_SEA_FUSE}`,
+        machoSegmentName: platform.startsWith("darwin")
+          ? "NODE_SEA"
+          : undefined,
       }
-
-      if (platform.startsWith("win")) {
-        console.warn(
-          "Signing is not supported on Windows, you will need to sign the binary yourself."
-        );
-        return;
-      }
-
+    );
+    console.log("Created executable", fossilizedBinary);
+    await run("chmod", "+x", fossilizedBinary);
+    if (!flags.sign) {
+      console.log("Skipping signing, add `--sign` to sign the binary");
       if (platform.startsWith("darwin")) {
-        const {
-          APPLE_TEAM_ID,
-          APPLE_CERT_PATH,
-          APPLE_CERT_PASSWORD,
-          APPLE_API_KEY_PATH,
-        } = process.env;
-        if (!APPLE_TEAM_ID || !APPLE_CERT_PATH || !APPLE_CERT_PASSWORD) {
-          throw new Error(
-            "Missing required environment variables for macOS signing (at least one of APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD)"
-          );
-        }
-        console.log(`Signing ${fossilizedBinary}...`);
-        await run(
-          "rcodesign",
-          "sign",
-          "--team-name",
-          APPLE_TEAM_ID,
-          "--p12-file",
-          APPLE_CERT_PATH,
-          "--p12-password",
-          APPLE_CERT_PASSWORD,
-          "--for-notarization",
-          "-e",
-          path.join(import.meta.dirname, "entitlements.plist"),
-          fossilizedBinary
+        console.warn(
+          `macOS binaries must be signed to run. You can run \`spctl --add ${fossilizedBinary}\` to add the binary to your system's trusted binaries for testing.`
         );
-        if (!APPLE_API_KEY_PATH) {
-          console.warn(
-            "Missing required environment variable for macOS notarization, you won't be able to notarize this binary which will annoy people trying to run it."
-          );
-          return;
-        }
-        // TODO: Use JS-based zip instead of shelling out
-        const zipFile = `${fossilizedBinary}.zip`;
-        await run("zip", zipFile, fossilizedBinary);
-        await run(
-          "rcodesign",
-          "notary-submit",
-          "--api-key-file",
-          APPLE_API_KEY_PATH,
-          "--wait",
-          zipFile
-        );
-        await fs.rm(zipFile);
       }
-    })
+      return;
+    }
+
+    if (platform.startsWith("win")) {
+      console.warn(
+        "Signing is not supported on Windows, you will need to sign the binary yourself."
+      );
+      return;
+    }
+
+    if (platform.startsWith("darwin")) {
+      const {
+        APPLE_TEAM_ID,
+        APPLE_CERT_PATH,
+        APPLE_CERT_PASSWORD,
+        APPLE_API_KEY_PATH,
+      } = process.env;
+      if (!APPLE_TEAM_ID || !APPLE_CERT_PATH || !APPLE_CERT_PASSWORD) {
+        throw new Error(
+          "Missing required environment variables for macOS signing (at least one of APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD)"
+        );
+      }
+      console.log(`Signing ${fossilizedBinary}...`);
+      await run(
+        "rcodesign",
+        "sign",
+        "--team-name",
+        APPLE_TEAM_ID,
+        "--p12-file",
+        APPLE_CERT_PATH,
+        "--p12-password",
+        APPLE_CERT_PASSWORD,
+        "--for-notarization",
+        "-e",
+        path.join(import.meta.dirname, "entitlements.plist"),
+        fossilizedBinary
+      );
+      if (!APPLE_API_KEY_PATH) {
+        console.warn(
+          "Missing required environment variable for macOS notarization, you won't be able to notarize this binary which will annoy people trying to run it."
+        );
+        return;
+      }
+      // TODO: Use JS-based zip instead of shelling out
+      const zipFile = `${fossilizedBinary}.zip`;
+      await run("zip", zipFile, fossilizedBinary);
+      await run(
+        "rcodesign",
+        "notary-submit",
+        "--api-key-file",
+        APPLE_API_KEY_PATH,
+        "--wait",
+        zipFile
+      );
+      await fs.rm(zipFile);
+    }
+  };
+  const limit = pLimit(flags.concurrencyLimit);
+  await Promise.all(
+    platforms.map(async (platform) =>
+      limit(() => createBinaryForPlatform(platform))
+    )
   );
   await Promise.all([fs.rm(seaConfigPath), fs.rm(blobPath)]);
 }

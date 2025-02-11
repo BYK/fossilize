@@ -52,6 +52,7 @@
         "@stricli/core": "^1.1.0",
         "esbuild": "^0.25.0",
         "macho-unsign": "^2.0.6",
+        "p-limit": "^6.2.0",
         "portable-executable-signature": "^2.0.6",
         "postject": "^1.0.0-alpha.6",
         "tar-stream": "^3.1.7",
