@@ -85,7 +85,7 @@ export async function _resolveNodeVersion(version: string): Promise<string> {
   } else {
     resolvedVersion = versionBits.join(".");
   }
-  console.log(`Resolved NodeJS version '${version}' to ${resolvedVersion}`);
+  console.log(`Resolved Node.js version '${version}' to ${resolvedVersion}`);
   const [nodeVersionMajor, nodeVersionMinor] = resolvedVersion
     .match(NODE_VERSION_REGEX)!
     .slice(1, 3)
