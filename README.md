@@ -2,6 +2,40 @@
 
 Create self-contained binaries for all platforms supported by Node.js using [Node SEA][1].
 
+## Usage
+
+### With `npx`
+
+In the root of your Node.js project
+
+```shell
+npx fossilize
+```
+
+or just give it your entrypoint file
+
+```shell
+npx fossilize main.js
+```
+
+### As a dev dependency
+
+It is also possible to use fossilize as a dev dependency. Add it to your project first:
+
+```shell
+npm add --save-dev fossilize
+```
+
+and then add a `compile` script to your project referencing fossilize:
+
+```json
+{
+   "scripts": {
+      "compile": "fossilize -a some.html -n lts"
+   }
+}
+```
+
 ## What is it?
 
 Fossilize is a tool to create Node SEAs (Single Executable Applications)
