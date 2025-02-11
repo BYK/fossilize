@@ -6,7 +6,15 @@
     "repository": "github:BYK/fossilize",
     "license": "MIT",
     "type": "module",
-    "version": "0.1.0",
+    "version": "0.1.1",
+    "keywords": [
+        "node",
+        "sea",
+        "binary",
+        "packaging",
+        "packager",
+        "fossilize"
+    ],
     "files": [
         "dist",
         "import-meta-url.js"
