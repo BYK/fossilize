@@ -64,7 +64,7 @@ export async function _resolveNodeVersion(version: string): Promise<string> {
     const availableVersions = (await response.json()) as NodeJSVersionInfo[];
     if (!availableVersions || availableVersions.length === 0) {
       throw new Error(
-        `No available NodeJS versions found from: ${NODE_VERSIONS_INDEX_URL}`
+        `No available Node.js versions found from: ${NODE_VERSIONS_INDEX_URL}`
       );
     }
     if (version === "latest") {
@@ -79,7 +79,7 @@ export async function _resolveNodeVersion(version: string): Promise<string> {
     }
     if (!resolvedVersion) {
       throw new Error(
-        `No matching NodeJS version found for: ${version} from: ${NODE_VERSIONS_INDEX_URL}`
+        `No matching Node.js version found for: ${version} from: ${NODE_VERSIONS_INDEX_URL}`
       );
     }
   } else {
@@ -96,7 +96,7 @@ export async function _resolveNodeVersion(version: string): Promise<string> {
     (nodeVersionMajor === 19 && nodeVersionMinor < 7)
   ) {
     throw new Error(
-      `NodeJS version ${resolvedVersion} does not support SEA.\nSee https://nodejs.org/api/single-executable-applications.html#single-executable-applications`
+      `Node.js version ${resolvedVersion} does not support SEA.\nSee https://nodejs.org/api/single-executable-applications.html#single-executable-applications`
     );
   }
   return resolvedVersion;
@@ -116,7 +116,7 @@ export async function getNodeBinary(
   cacheDir: string | null
 ): Promise<string> {
   if (cacheDir == null) {
-    // this means don't use cach
+    // this means don't use cache
     // we still need a temp directory to download the node binary
     cacheDir = tmpdir();
   }

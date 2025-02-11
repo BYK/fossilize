@@ -1,17 +1,58 @@
 # Fossilize
 
-Create self-contained binaries with cross-compiling from your Node.JS application
-using [Node SEA][1].
+Create self-contained binaries for all platforms supported by Node.js using [Node SEA][1].
 
 ## What is it?
 
-Fossilize is a tool to create Node SEA (Single Executable Applications) binaries
+Fossilize is a tool to create Node SEAs (Single Executable Applications)
 for different platforms. It bundles your Node.js application and its dependencies
-into a single CJS file using `esbuild` first and then creates a self-contained
-binary from that using the [Node SEA][1] feature.
+into a single CJS file using `esbuild`. Then creates a self-contained binary from
+that using the [Node SEA][1] feature.
 
 It also supports embedding assets either file by file, from a directory, or
 through a Vite manifest.
+
+## Why?
+
+### Why would I want a single-executable Node.js application?
+
+If you are building a CLI application using Node.js, it becomes a challenge to
+distribute it. You may rely on `npx` which requires Node.js but you'd also need
+to make sure your app works with many Node.js versions. Your tool being written
+in JS does not necessarily mean it is for Node.js users but it would require
+Node.js on their system. With Node SEA, you just give them a self-contained
+binary without any other system requirements (except for `libc`) and you are
+done.
+
+Alternatively, you might be developing a server application that you want to
+distribute and deploy using Docker. Now you need to maintain a Docker image
+build pipeline, optimize the image building process based on dependencies,
+learn how to minimize image size by deleting package manager caches etc.
+On the other hand, if you distribute your application as a Node SEA, then
+all you need to do is copy a single binary into a base Linux distro image
+that has `libc` (sorry Alpine) and you are good to go.
+
+### Why do I need `fossilize`?
+
+If you go check the documentation for Node SEA, not only you'd see that it is
+marked as "under active development", you'd also realize that there are these
+manual and hand-wavy steps that you need to follow to build a Node SEA binary.
+Just the macOS signing part is a big discovery journey itself whereas if you
+are using [Deno][3] for instance, it is just [`deno compile`][4].
+
+_Yes, we can improve the docs and we probably should but an automated tool is still better._
+
+### Why is `fossilize` itself not a Node SEA?
+
+Oh the irony! I actually tried but there are two main blockers right now:
+
+1. I want to include a bundler and both `esbuild` and `rollup` have native
+   components. They do support and have WASM so this is still possible but
+   I just didn't have that time to work on this yet.
+2. [postject][5], the library we use to inject your app into the Node.js binary
+   gets confused if you try to inject itself (or some code contains itself).
+   This is most probably solvable with a pull request but that requires time
+   like the item above, which I've yet to spend.
 
 ## Notes
 
@@ -27,3 +68,6 @@ Further documentation will be added about how to obtain and use these.
 
 [1]: https://nodejs.org/api/single-executable-applications.html#single-executable-applications
 [2]: https://github.com/indygreg/apple-platform-rs/releases
+[3]: https://deno.com/
+[4]: https://docs.deno.com/runtime/reference/cli/compile/
+[5]: https://www.npmjs.com/package/postject

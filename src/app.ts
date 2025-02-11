@@ -20,7 +20,7 @@ const command = buildCommand({
       nodeVersion: {
         kind: "parsed",
         parse: String,
-        brief: "NodeJS version to fossilize with",
+        brief: "Node.js version to fossilize with",
         default: "local",
       },
       platforms: {
@@ -53,12 +53,12 @@ const command = buildCommand({
       cacheDir: {
         kind: "parsed",
         parse: String,
-        brief: "Cache directory for NodeJS binaries",
+        brief: "Cache directory for Node.js binaries",
         default: ".node-cache", // todo, change this to global
       },
       noCache: {
         kind: "boolean",
-        brief: "Do not use the cache for NodeJS binaries",
+        brief: "Do not use the cache for Node.js binaries",
         optional: true,
       },
       noBundle: {
