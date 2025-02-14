@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import * as esbuild from "esbuild";
 import { inject } from "postject";
 import type { LocalContext } from "./context";
-import { getNodeBinary } from "./node-util";
+import { getNodeBinary, resolveNodeVersion } from "./node-util";
 import pLimit from "p-limit";
 
 interface CommandFlags {
@@ -85,9 +85,10 @@ export default async function (
     outputName = path.basename(entrypoint).split(".")[0];
   }
   outputName = flags.outputName || outputName || "bundled";
+  const currentPlatform = `${process.platform}-${process.arch}`;
   const platforms =
     !flags.platforms || flags.platforms.length === 0
-      ? [`${process.platform}-${process.arch}`]
+      ? [currentPlatform]
       : flags.platforms;
   this.process.stdout.write(`Platforms: ${platforms.join(", ")}\n`);
 
@@ -112,8 +113,9 @@ export default async function (
       bundle: true,
       minify: true,
       platform: "node",
-      // Todo, adjust this for the target node version!
-      target: "node20",
+      target: `node${
+        (await resolveNodeVersion(flags.nodeVersion)).split(".", 1)[0]
+      }`,
       format: "cjs",
       treeShaking: true,
       inject: [fileURLToPath(import.meta.resolve("../import-meta-url.js"))],
@@ -166,15 +168,20 @@ export default async function (
   }
 
   await fs.writeFile(seaConfigPath, JSON.stringify(seaConfig));
-  await run(process.execPath, "--experimental-sea-config", seaConfigPath);
+  const targetNodeBinary = await getNodeBinary(
+    flags.nodeVersion,
+    currentPlatform,
+    flags.cacheDir
+  );
+  await run(targetNodeBinary, "--experimental-sea-config", seaConfigPath);
   const createBinaryForPlatform = async (platform: string): Promise<void> => {
     const outputPath = path.join(flags.outDir, outputName);
     console.log(`Creating binary for ${platform} (${outputPath})...`);
     const fossilizedBinary = await getNodeBinary(
       flags.nodeVersion,
       platform,
-      path.join(flags.outDir, outputName),
-      flags.noCache ? null : flags.cacheDir
+      flags.noCache ? null : flags.cacheDir,
+      path.join(flags.outDir, outputName)
     );
     console.log(`Injecting blob into node executable: ${fossilizedBinary}`);
     await inject(
@@ -191,7 +198,7 @@ export default async function (
       }
     );
     console.log("Created executable", fossilizedBinary);
-    await run("chmod", "+x", fossilizedBinary);
+    fs.chmod(fossilizedBinary, 0o755);
     if (!flags.sign) {
       console.log("Skipping signing, add `--sign` to sign the binary");
       if (platform.startsWith("darwin")) {

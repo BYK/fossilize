@@ -31,14 +31,19 @@ function getNodeBinaryCacheName(
   return { name: `node-v${version}-${platform}${ext}`, ext };
 }
 
+
 async function getNodeBinaryFromCache(
   cacheDir: string,
   version: string,
   platform: string,
-  targetPath: string
+  targetPath?: string
 ): Promise<string> {
   const { name, ext } = getNodeBinaryCacheName(version, platform);
   const cacheSourceFile = path.join(cacheDir, name);
+  if (!targetPath) {
+    await fs.access(cacheSourceFile, fs.constants.R_OK);
+    return cacheSourceFile;
+  }
   const targetFile = `${targetPath}-${platform}${ext}`;
   await fs.copyFile(cacheSourceFile, targetFile);
   return targetFile;
@@ -112,8 +117,8 @@ export function resolveNodeVersion(version: string): Promise<string> {
 export async function getNodeBinary(
   version: string,
   platform: string,
-  targetPath: string,
-  cacheDir: string | null
+  cacheDir: string | null,
+  targetPath?: string
 ): Promise<string> {
   if (cacheDir == null) {
     // this means don't use cache
@@ -191,6 +196,7 @@ export async function getNodeBinary(
     }
     await fs.writeFile(cacheTargetFile, nodeBuffer);
   }
+  await fs.chmod(cacheTargetFile, 0o755);
 
   try {
     await fs.rm(nodeDir, { recursive: true });
