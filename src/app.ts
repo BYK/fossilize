@@ -49,6 +49,12 @@ const command = buildCommand({
         brief: "Output directory",
         default: "dist-bin",
       },
+      outputName: {
+        kind: "parsed",
+        parse: String,
+        brief: "Output file name (overrides inferred name from package.json)",
+        optional: true,
+      },
       cacheDir: {
         kind: "parsed",
         parse: String,
@@ -80,6 +86,8 @@ const command = buildCommand({
     },
     aliases: {
       n: "nodeVersion",
+      d: "outDir",
+      o: "outputName",
       p: "platforms",
       a: "assets",
       m: "assetManifest",

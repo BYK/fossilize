@@ -15,6 +15,7 @@ interface CommandFlags {
   readonly assets?: string[];
   readonly assetManifest?: string;
   readonly outDir: string;
+  readonly outputName?: string;
   readonly cacheDir: string;
   readonly noCache?: boolean;
   readonly noBundle: boolean;
@@ -72,15 +73,18 @@ export default async function (
       await fs.readFile(path.join(entrypoint, PACKAGE_JSON), "utf-8")
     );
     appVersion = packageJson.version;
-    outputName = packageJson.name.split("/").pop();
-    entrypointPath =
-      (outputName && packageJson.bin?.[outputName]) || packageJson.main;
+    const binDefs = Object.entries(packageJson.bin || {});
+    if (binDefs.length === 1) {
+      outputName = binDefs[0]![0];
+      entrypointPath = binDefs[0]![1] as string;
+    } else {
+      outputName = packageJson.name.split("/").pop();
+      entrypointPath = packageJson.main;
+    }
   } else {
     outputName = path.basename(entrypoint).split(".")[0];
   }
-  if (!outputName) {
-    outputName = "bundled";
-  }
+  outputName = flags.outputName || outputName || "bundled";
   const platforms =
     !flags.platforms || flags.platforms.length === 0
       ? [`${process.platform}-${process.arch}`]
@@ -108,7 +112,8 @@ export default async function (
       bundle: true,
       minify: true,
       platform: "node",
-      target: "node22",
+      // Todo, adjust this for the target node version!
+      target: "node20",
       format: "cjs",
       treeShaking: true,
       inject: [fileURLToPath(import.meta.resolve("../import-meta-url.js"))],
