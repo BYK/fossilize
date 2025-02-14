@@ -95,11 +95,7 @@ export async function _resolveNodeVersion(version: string): Promise<string> {
     .match(NODE_VERSION_REGEX)!
     .slice(1, 3)
     .map(Number) as [number, number];
-  if (
-    nodeVersionMajor < 18 ||
-    (nodeVersionMajor === 18 && nodeVersionMinor < 16) ||
-    (nodeVersionMajor === 19 && nodeVersionMinor < 7)
-  ) {
+  if (nodeVersionMajor < 20) {
     throw new Error(
       `Node.js version ${resolvedVersion} does not support SEA.\nSee https://nodejs.org/api/single-executable-applications.html#single-executable-applications`
     );
