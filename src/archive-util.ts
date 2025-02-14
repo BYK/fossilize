@@ -4,6 +4,16 @@ import * as tar from "tar-stream";
 import XZDecompress from "xz-decompress";
 import yauzl from "yauzl";
 
+async function bufferFromAsync(iterator: {
+  [Symbol.asyncIterator](): AsyncIterableIterator<Buffer>;
+}): Promise<Buffer> {
+  const chunks = [];
+  for await (const chunk of iterator) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 const yauzlOpen = promisify(yauzl.open);
 export async function unzip(
   sourceFile: string,
@@ -24,7 +34,7 @@ export async function unzip(
         return;
       }
       found = true;
-      resolve(Buffer.concat(await Array.fromAsync(readStream)));
+      resolve(bufferFromAsync(readStream));
     });
   });
   zipfile.once("end", () => {
@@ -58,7 +68,7 @@ export async function untar(
     // stream to completion to avoid resource leaks and
     // early termination of the decompression, causing a
     // corrupted buffer.
-    result = Buffer.concat(await Array.fromAsync(entry));
+    result = await bufferFromAsync(entry);
   }
 
   if (!result) {
