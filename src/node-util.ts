@@ -116,7 +116,7 @@ export async function getNodeBinary(
   cacheDir: string | null,
   targetPath?: string
 ): Promise<string> {
-  if (cacheDir == null) {
+  if (!cacheDir) {
     // this means don't use cache
     // we still need a temp directory to download the node binary
     cacheDir = tmpdir();

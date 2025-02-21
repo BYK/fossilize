@@ -92,7 +92,9 @@ export default async function (
   const currentPlatform = `${process.platform}-${process.arch}`;
   const platforms =
     !flags.platforms || flags.platforms.length === 0
-      ? [currentPlatform]
+      ? (process.env["FOSSILIZE_PLATFORMS"] || currentPlatform)
+          .split(",")
+          .map((platform) => platform.trim())
       : flags.platforms;
   this.process.stdout.write(`Platforms: ${platforms.join(", ")}\n`);
 

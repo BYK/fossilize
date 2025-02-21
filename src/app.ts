@@ -1,4 +1,5 @@
 import { buildApplication, buildCommand } from "@stricli/core";
+import { envToBool } from "./env-to-bool";
 import { description, name, version } from "../package.json";
 
 const command = buildCommand({
@@ -20,7 +21,7 @@ const command = buildCommand({
         kind: "parsed",
         parse: String,
         brief: "Node.js version to fossilize with",
-        default: "local",
+        default: process.env["FOSSILIZE_NODE_VERSION"] ?? "local",
       },
       platforms: {
         kind: "parsed",
@@ -59,7 +60,7 @@ const command = buildCommand({
         kind: "parsed",
         parse: String,
         brief: "Cache directory for Node.js binaries",
-        default: ".node-cache", // todo, change this to global
+        default: process.env["FOSSILIZE_CACHE_DIR"] ?? ".node-cache", // todo, change this to global
       },
       noCache: {
         kind: "boolean",
@@ -75,13 +76,13 @@ const command = buildCommand({
         kind: "boolean",
         brief: "Skip signing for macOS and Windows",
         optional: false,
-        default: false,
+        default: envToBool(process.env["FOSSILIZE_SIGN"]),
       },
       concurrencyLimit: {
         kind: "parsed",
         parse: Number,
         brief: "Limit the number of concurrent downloads or builds",
-        default: "3",
+        default: process.env["FOSSILIZE_CONCURRENCY_LIMIT"] ?? "3",
       },
     },
     aliases: {
