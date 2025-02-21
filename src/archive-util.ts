@@ -4,6 +4,10 @@ import * as tar from "tar-stream";
 import XZDecompress from "xz-decompress";
 import yauzl from "yauzl";
 
+type BufferPromiseConstructorParams = Parameters<
+  ConstructorParameters<typeof Promise<Buffer>>[0]
+>;
+
 async function bufferFromAsync(iterator: {
   [Symbol.asyncIterator](): AsyncIterableIterator<Buffer>;
 }): Promise<Buffer> {
@@ -22,7 +26,13 @@ export async function unzip(
   let found = false;
   // @ts-expect-error -- For some reason, TS is selecting the wrong overload for yauzl.open with promisify above
   const zipfile = await yauzlOpen(sourceFile, { lazyEntries: true });
-  const { resolve, reject, promise } = Promise.withResolvers<Buffer>();
+  let resolve: BufferPromiseConstructorParams[0],
+    reject: BufferPromiseConstructorParams[1];
+  const promise = new Promise<Buffer>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
   zipfile.on("entry", (entry) => {
     if (entry.fileName !== targetFile) {
       zipfile.readEntry();
