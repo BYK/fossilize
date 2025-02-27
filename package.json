@@ -6,7 +6,7 @@
     "repository": "github:BYK/fossilize",
     "license": "MIT",
     "type": "module",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "keywords": [
         "node",
         "sea",
