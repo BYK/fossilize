@@ -1,6 +1,8 @@
 # Fossilize
 
-Create self-contained binaries for all platforms supported by Node.js using [Node SEA][1].
+![NPM Version][1] ![Build Status][2]
+
+Create self-contained binaries for all platforms supported by Node.js using [Node SEA][3].
 
 ## Usage
 
@@ -36,17 +38,27 @@ and then add a `compile` script to your project referencing fossilize:
 }
 ```
 
+### Supported Environment Variables
+
+- `FOSSILIZE_SIGN`
+- `FOSSILIZE_NODE_VERSION`
+- `FOSSILIZE_CACHE_DIR`
+- `FOSSILIZE_PLATFORMS` (comma separated)
+- `FOSSILIZE_CONCURRENCY_LIMIT`
+
 ## What is it?
 
 Fossilize is a tool to create Node SEAs (Single Executable Applications)
 for different platforms. It bundles your Node.js application and its dependencies
 into a single CJS file using `esbuild`. Then creates a self-contained binary from
-that using the [Node SEA][1] feature.
+that using the [Node SEA][3] feature.
 
 It also supports embedding assets either file by file, from a directory, or
 through a Vite manifest.
 
 ## Why?
+
+Long version: [https://byk.im/posts/fossilize/](https://byk.im/posts/fossilize/)
 
 ### Why would I want a single-executable Node.js application?
 
@@ -72,7 +84,7 @@ If you go check the documentation for Node SEA, not only you'd see that it is
 marked as "under active development", you'd also realize that there are these
 manual and hand-wavy steps that you need to follow to build a Node SEA binary.
 Just the macOS signing part is a big discovery journey itself whereas if you
-are using [Deno][3] for instance, it is just [`deno compile`][4].
+are using [Deno][5] for instance, it is just [`deno compile`][6].
 
 _Yes, we can improve the docs and we probably should but an automated tool is still better._
 
@@ -83,7 +95,7 @@ Oh the irony! I actually tried but there are two main blockers right now:
 1. I want to include a bundler and both `esbuild` and `rollup` have native
    components. They do support and have WASM so this is still possible but
    I just didn't have that time to work on this yet.
-2. [postject][5], the library we use to inject your app into the Node.js binary
+2. [postject][7], the library we use to inject your app into the Node.js binary
    gets confused if you try to inject itself (or some code contains itself).
    This is most probably solvable with a pull request but that requires time
    like the item above, which I've yet to spend.
@@ -91,7 +103,7 @@ Oh the irony! I actually tried but there are two main blockers right now:
 ## Notes
 
 Currently, it supports signing macOS binaries which is required for them to run
-on any system. It uses [`rcodesign`][2] for this through the following env variables:
+on any system. It uses [`rcodesign`][4] for this through the following env variables:
 
 - `APPLE_TEAM_ID`
 - `APPLE_CERT_PATH`
@@ -100,8 +112,10 @@ on any system. It uses [`rcodesign`][2] for this through the following env varia
 
 Further documentation will be added about how to obtain and use these.
 
-[1]: https://nodejs.org/api/single-executable-applications.html#single-executable-applications
-[2]: https://github.com/indygreg/apple-platform-rs/releases
-[3]: https://deno.com/
-[4]: https://docs.deno.com/runtime/reference/cli/compile/
-[5]: https://www.npmjs.com/package/postject
+[1]: https://img.shields.io/npm/v/fossilize
+[2]: https://github.com/BYK/fossilize/actions/workflows/build.yml/badge.svg?branch=main
+[3]: https://nodejs.org/api/single-executable-applications.html#single-executable-applications
+[4]: https://github.com/indygreg/apple-platform-rs/releases
+[5]: https://deno.com/
+[6]: https://docs.deno.com/runtime/reference/cli/compile/
+[7]: https://www.npmjs.com/package/postject
