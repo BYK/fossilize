@@ -45,7 +45,21 @@ async function getNodeBinaryFromCache(
     return cacheSourceFile;
   }
   const targetFile = `${targetPath}-${platform}${ext}`;
-  await fs.copyFile(cacheSourceFile, targetFile);
+  if (platform.startsWith("darwin") || platform.startsWith("win")) {
+    const nodeBuffer = await fs.readFile(cacheSourceFile);
+    let unsigned: ArrayBufferLike | null = null;
+    if (platform.startsWith("win")) {
+      unsigned = signatureSet(nodeBuffer, null);
+    } else if (platform.startsWith("darwin")) {
+      unsigned = unsign(nodeBuffer.buffer);
+    }
+    if (!unsigned) {
+      throw new Error(`Failed to unsign binary: ${cacheSourceFile}`);
+    }
+    await fs.writeFile(targetFile, Buffer.from(unsigned));
+  } else {
+    await fs.copyFile(cacheSourceFile, targetFile);
+  }
   return targetFile;
 }
 
@@ -91,7 +105,7 @@ export async function _resolveNodeVersion(version: string): Promise<string> {
     resolvedVersion = versionBits.join(".");
   }
   console.log(`Resolved Node.js version '${version}' to ${resolvedVersion}`);
-  const [nodeVersionMajor, nodeVersionMinor] = resolvedVersion
+  const [nodeVersionMajor, _nodeVersionMinor] = resolvedVersion
     .match(NODE_VERSION_REGEX)!
     .slice(1, 3)
     .map(Number) as [number, number];
@@ -169,28 +183,17 @@ export async function getNodeBinary(
   if (platform.startsWith("win")) {
     const stream = createWriteStream(path.join(nodeDir, remoteArchiveName));
     await finished(Readable.fromWeb(resp.body).pipe(stream));
-    const sourceFile = path.join(
-      `node-v${resolvedVersion}-${platform}`,
-      "node.exe"
+    const data = await unzip(
+      stream.path as string,
+      // Need `/` as path separator, even on Windows as that's how `unzip` works
+      `node-v${resolvedVersion}-${platform}/node.exe`
     );
-    const data = await unzip(stream.path as string, sourceFile);
-    const unsigned = signatureSet(data, null);
-    await fs.writeFile(cacheTargetFile, Buffer.from(unsigned));
+    await fs.writeFile(cacheTargetFile, data);
   } else {
-    const sourceFile = path.join(
-      `node-v${resolvedVersion}-${platform}`,
-      "bin",
-      "node"
+    await fs.writeFile(
+      cacheTargetFile,
+      await untar(resp.body, `node-v${resolvedVersion}-${platform}/bin/node`)
     );
-    let nodeBuffer: Buffer = await untar(resp.body, sourceFile);
-    if (platform.startsWith("darwin")) {
-      const unsigned = unsign(nodeBuffer.buffer);
-      if (!unsigned) {
-        throw new Error(`Failed to unsign macOS binary: ${sourceFile}`);
-      }
-      nodeBuffer = Buffer.from(unsigned);
-    }
-    await fs.writeFile(cacheTargetFile, nodeBuffer);
   }
   await fs.chmod(cacheTargetFile, 0o755);
 
