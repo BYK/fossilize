@@ -90,7 +90,10 @@ export default async function (
     outputName = path.basename(entrypoint).split(".")[0];
   }
   outputName = flags.outputName || outputName || "bundled";
-  const currentPlatform = `${process.platform}-${process.arch}`;
+  // For Windows, `process.platform` is `win32` but the archives just use `win`, sigh...
+  const normalizedPlatform =
+    process.platform === "win32" ? "win" : process.platform;
+  const currentPlatform = `${normalizedPlatform}-${process.arch}`;
   const platforms =
     !flags.platforms || flags.platforms.length === 0
       ? (process.env["FOSSILIZE_PLATFORMS"] || currentPlatform)
