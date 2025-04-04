@@ -177,6 +177,14 @@ export default async function (
     }
   }
 
+  if (flags.assets) {
+    seaConfig.assets = seaConfig.assets || {};
+    for (const asset of flags.assets) {
+      const assetPath = path.resolve(asset);
+      seaConfig.assets[asset] = assetPath;
+    }
+  }
+
   await fs.writeFile(seaConfigPath, JSON.stringify(seaConfig));
   const targetNodeBinary = await getNodeBinary(
     flags.nodeVersion,
