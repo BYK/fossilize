@@ -80,3 +80,8 @@ jobs:
       - name: Smoke test
         run: |
             node dist/cli.js
+            cd test
+            node ../dist/cli.js -a asset.txt --no-bundle sample.cjs
+            expected=$(cat asset.txt)
+            actual=$(./dist-bin/sample-linux-x64)
+            [ "$actual" = "$expected" ]
