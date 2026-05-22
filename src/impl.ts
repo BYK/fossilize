@@ -94,12 +94,15 @@ export default async function (
   const normalizedPlatform =
     process.platform === "win32" ? "win" : process.platform;
   const currentPlatform = `${normalizedPlatform}-${process.arch}`;
-  const platforms =
-    !flags.platforms || flags.platforms.length === 0
-      ? (process.env["FOSSILIZE_PLATFORMS"] || currentPlatform)
-          .split(",")
-          .map((platform) => platform.trim())
-      : flags.platforms;
+  const platforms = [
+    ...new Set(
+      !flags.platforms || flags.platforms.length === 0
+        ? (process.env["FOSSILIZE_PLATFORMS"] || currentPlatform)
+            .split(",")
+            .map((platform) => platform.trim())
+        : flags.platforms
+    ),
+  ];
   this.process.stdout.write(`Platforms: ${platforms.join(", ")}\n`);
 
   const seaConfigPath = path.join(flags.outDir, SEA_CONFIG_JSON);
@@ -145,12 +148,21 @@ export default async function (
     }
   }
 
+  // Determine if any target matches the build host — code cache is only
+  // valid for the same CPU architecture, so we generate two blobs when
+  // cross-compiling: one with code cache (host platform) and one without.
+  const hostIsTarget = platforms.includes(currentPlatform);
+  const needsCrossBlob = platforms.length > 1 || !hostIsTarget;
+
   const seaConfig: SEAConfig = {
     main: jsBundlePath,
     output: blobPath,
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
-    useCodeCache: false, // We do cross-compiling so disable this
+    // Enable code cache when building only for the host platform.
+    // When cross-compiling, the base blob is generated without code cache;
+    // a second blob with code cache is created for the host platform below.
+    useCodeCache: hostIsTarget && !needsCrossBlob,
   };
   if (flags.assetManifest) {
     const manifest = JSON.parse(
@@ -192,6 +204,27 @@ export default async function (
     flags.cacheDir
   );
   await run(targetNodeBinary, "--experimental-sea-config", seaConfigPath);
+
+  // When cross-compiling AND the host platform is a target, generate a
+  // second blob with V8 code cache enabled. Code cache pre-compiles the
+  // JS into bytecode, saving ~15% startup time — but the bytecode is
+  // CPU-architecture-specific, so it only works for the host platform.
+  const codeCacheBlobPath = `${blobPath}.codecache`;
+  let hasCodeCacheBlob = false;
+  if (hostIsTarget && needsCrossBlob) {
+    const codeCacheConfig: SEAConfig = {
+      ...seaConfig,
+      useCodeCache: true,
+      output: codeCacheBlobPath,
+    };
+    const codeCacheConfigPath = `${seaConfigPath}.codecache`;
+    await fs.writeFile(codeCacheConfigPath, JSON.stringify(codeCacheConfig));
+    console.log(`Generating code-cache blob for host platform (${currentPlatform})...`);
+    await run(targetNodeBinary, "--experimental-sea-config", codeCacheConfigPath);
+    await fs.rm(codeCacheConfigPath);
+    hasCodeCacheBlob = true;
+  }
+
   const createBinaryForPlatform = async (platform: string): Promise<void> => {
     const outputPath = path.join(flags.outDir, outputName);
     console.log(`Creating binary for ${platform} (${outputPath})...`);
@@ -201,11 +234,16 @@ export default async function (
       flags.noCache ? null : flags.cacheDir,
       path.join(flags.outDir, outputName)
     );
-    console.log(`Injecting blob into node executable: ${fossilizedBinary}`);
+    // Use the code-cache blob for the host platform, base blob for others
+    const blobForPlatform = (hasCodeCacheBlob && platform === currentPlatform)
+      ? codeCacheBlobPath
+      : blobPath;
+    const cacheLabel = blobForPlatform === codeCacheBlobPath ? " (with code cache)" : "";
+    console.log(`Injecting blob into node executable: ${fossilizedBinary}${cacheLabel}`);
     await inject(
       fossilizedBinary,
       "NODE_SEA_BLOB",
-      await fs.readFile(blobPath),
+      await fs.readFile(blobForPlatform),
       {
         // NOTE: Split the string into 2 as `postject` naively looks for that exact string
         //       for the fuse and gets confused when we try to bundle fossilize.
@@ -287,5 +325,9 @@ export default async function (
       limit(() => createBinaryForPlatform(platform))
     )
   );
-  await Promise.all([fs.rm(seaConfigPath), fs.rm(blobPath)]);
+  const cleanups = [fs.rm(seaConfigPath), fs.rm(blobPath)];
+  if (hasCodeCacheBlob) {
+    cleanups.push(fs.rm(codeCacheBlobPath));
+  }
+  await Promise.all(cleanups);
 }
