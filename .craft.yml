@@ -1,0 +1,15 @@
+minVersion: '2.21.1'
+changelog:
+  policy: auto
+versioning:
+  policy: auto
+artifactProvider:
+  name: github
+  config:
+    artifacts:
+      CI: npm-tarball
+targets:
+  - name: npm
+    access: public
+    oidc: true
+  - name: github
