@@ -32,7 +32,7 @@ This repo uses [getsentry/craft](https://github.com/getsentry/craft) for automat
 
 ### Prerequisites for releasing
 - GitHub App with `contents: write` and `issues: write` permissions
-  - Repo variable `APP_ID` and secret `APP_PRIVATE_KEY`
+  - Repo variable `APP_CLIENT_ID` and secret `APP_PRIVATE_KEY`
 - GitHub environment `production` on the repo
 - npm OIDC provenance linked for the `fossilize` package
 
