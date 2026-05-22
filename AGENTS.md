@@ -25,7 +25,7 @@ This repo uses [getsentry/craft](https://github.com/getsentry/craft) for automat
 6. Issue auto-closes on success
 
 ### Key files
-- `.craft.yml` — Craft configuration (npm + github targets)
+- `.craft.yml` — Craft configuration (npm + github targets, artifact provider maps `Build & Test` workflow)
 - `.github/workflows/build.yml` — CI: build, smoke test, artifact packing on release branches
 - `.github/workflows/release.yml` — Manual trigger for `craft prepare`
 - `.github/workflows/publish.yml` — Issue-label-triggered `craft publish`
@@ -40,3 +40,9 @@ This repo uses [getsentry/craft](https://github.com/getsentry/craft) for automat
 - Uses OIDC authentication (no `NPM_TOKEN` secret needed)
 - Package is published with `public` access
 - The `artifacts` job in CI packs the tarball using `npm pack` after downloading the pre-built `dist/` artifact
+
+<!-- This section is maintained by the coding agent via lore (https://github.com/BYK/loreai) -->
+## Long-term Knowledge
+
+For long-term knowledge entries managed by [lore](https://github.com/BYK/loreai) (gotchas, patterns, decisions, architecture), see [`.lore.md`](.lore.md) in the project root.
+<!-- End lore-managed section -->
