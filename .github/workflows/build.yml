@@ -2,7 +2,7 @@ name: Build & Test
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
 
 concurrency:
@@ -13,23 +13,18 @@ defaults:
   run:
     shell: bash
 
-env:
-  BUILD_CACHE_KEY: ${{ github.sha }}
-  CACHED_BUILD_PATHS: |
-    ${{ github.workspace }}/packages/*/dist
-
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: package.json
           cache: npm
@@ -41,7 +36,7 @@ jobs:
         run: npm run build
 
       - name: Store dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           if-no-files-found: error
@@ -57,12 +52,12 @@ jobs:
     needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: package.json
           cache: npm
@@ -71,7 +66,7 @@ jobs:
         run: npm install
 
       - name: Download dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: dist
           path: dist
@@ -89,3 +84,31 @@ jobs:
             expected=$(cat asset.txt)
             actual=$(./dist-bin/sample-linux-x64)
             [ "$actual" = "$expected" ]
+
+  artifacts:
+    name: Artifacts
+    if: startsWith(github.ref, 'refs/heads/release/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist
+
+      - name: Pack tarball
+        run: npm pack
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-tarball
+          path: '*.tgz'
