@@ -7,7 +7,7 @@ artifactProvider:
   name: github
   config:
     artifacts:
-      CI: npm-tarball
+      Build & Test: npm-tarball
 targets:
   - name: npm
     access: public
