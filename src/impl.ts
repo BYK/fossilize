@@ -234,6 +234,22 @@ export default async function (
       flags.noCache ? null : flags.cacheDir,
       path.join(flags.outDir, outputName)
     );
+    // Strip debug symbols before SEA injection. Node.js ships with full
+    // symbol tables (~17 MiB on linux-x64). Must strip BEFORE postject
+    // injection — postject corrupts the ELF section-to-segment layout.
+    // Windows PE binaries don't ship debug symbols in release builds.
+    if (!platform.startsWith("win")) {
+      try {
+        const stripCmd = platform.startsWith("darwin")
+          ? ["strip", "-x", fossilizedBinary]
+          : ["strip", "--strip-unneeded", fossilizedBinary];
+        await run(stripCmd[0]!, ...stripCmd.slice(1));
+      } catch {
+        // Non-fatal: may fail when cross-stripping (e.g., macOS Mach-O on Linux)
+        console.warn(`  Warning: strip failed for ${platform} (non-fatal)`);
+      }
+    }
+
     // Use the code-cache blob for the host platform, base blob for others
     const blobForPlatform = (hasCodeCacheBlob && platform === currentPlatform)
       ? codeCacheBlobPath
