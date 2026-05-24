@@ -1,4 +1,14 @@
 # Changelog
+## 0.7.0
+
+### New Features ✨
+
+- Strip debug symbols from Node binaries before SEA injection by @BYK in [#16](https://github.com/BYK/fossilize/pull/16)
+
+### Bug Fixes 🐛
+
+- Use client-id instead of deprecated app-id for GitHub App token by @BYK in [#15](https://github.com/BYK/fossilize/pull/15)
+
 ## 0.6.0
 
 ### New Features ✨
