@@ -6,7 +6,7 @@
     "repository": "github:BYK/fossilize",
     "license": "MIT",
     "type": "module",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "keywords": [
         "node",
         "sea",
@@ -51,6 +51,7 @@
     "dependencies": {
         "@stricli/auto-complete": "^1.1.0",
         "@stricli/core": "^1.1.0",
+        "binpunch": "^1.0.0",
         "esbuild": "^0.25.0",
         "macho-unsign": "^2.0.6",
         "p-limit": "^6.2.0",

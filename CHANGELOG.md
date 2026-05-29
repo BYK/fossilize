@@ -1,4 +1,10 @@
 # Changelog
+## 0.8.0
+
+### New Features ✨
+
+- Add `--hole-punch` flag to zero unused ICU data before signing, reducing compressed binary size by ~24%. Uses [binpunch](https://github.com/BYK/binpunch) internally. Opt-in via `--hole-punch` or `FOSSILIZE_HOLE_PUNCH=y` — drops non-English i18n data, so only enable for English-only CLIs.
+
 ## 0.7.0
 
 ### New Features ✨
