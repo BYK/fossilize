@@ -241,10 +241,15 @@ export default async function (
     // Windows PE binaries don't ship debug symbols in release builds.
     if (!platform.startsWith("win")) {
       try {
-        const stripCmd = platform.startsWith("darwin")
-          ? ["strip", "-x", fossilizedBinary]
-          : ["strip", "--strip-unneeded", fossilizedBinary];
-        await run(stripCmd[0]!, ...stripCmd.slice(1));
+        const stripArgs = platform.startsWith("darwin")
+          ? ["-x", fossilizedBinary]
+          : ["--strip-unneeded", fossilizedBinary];
+        // Use execFileAsync directly instead of run() — run() calls
+        // process.exit() on numeric error codes, bypassing try/catch.
+        // Cross-stripping (e.g., ARM64 binary on x86_64 host) legitimately
+        // fails and must be non-fatal.
+        await execFileAsync("strip", stripArgs, { encoding: "utf8" });
+        console.log(`> strip ${stripArgs.join(" ")}`);
       } catch {
         // Non-fatal: may fail when cross-stripping (e.g., macOS Mach-O on Linux)
         console.warn(`  Warning: strip failed for ${platform} (non-fatal)`);

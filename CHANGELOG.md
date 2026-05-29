@@ -1,4 +1,10 @@
 # Changelog
+## 0.8.1
+
+### Bug Fixes 🐛
+
+- Fix cross-compilation crash: `strip` failure on foreign architectures (e.g., ARM64 binary on x86_64 host) now correctly falls through as non-fatal instead of calling `process.exit()`
+
 ## 0.8.0
 
 ### New Features ✨
