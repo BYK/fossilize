@@ -20,6 +20,7 @@ interface CommandFlags {
   readonly noCache?: boolean;
   readonly noBundle: boolean;
   readonly sign: boolean;
+  readonly holePunch: boolean;
   readonly concurrencyLimit: number;
 }
 
@@ -271,6 +272,20 @@ export default async function (
     );
     console.log("Created executable", fossilizedBinary);
     fs.chmod(fossilizedBinary, 0o755);
+
+    // Hole-punch unused ICU data before signing so the signature covers the
+    // final bytes. Must run after SEA injection (ICU blob lives in the Node
+    // binary's .rodata, unaffected by postject) and before sign + notarize.
+    if (flags.holePunch) {
+      const { processBinary } = await import("binpunch");
+      const stats = processBinary(fossilizedBinary);
+      if (stats && stats.removedEntries > 0) {
+        console.log(
+          `Hole-punched ${stats.removedEntries}/${stats.totalEntries} ICU entries in ${fossilizedBinary}`
+        );
+      }
+    }
+
     if (!flags.sign) {
       console.log("Skipping signing, add `--sign` to sign the binary");
       if (platform.startsWith("darwin")) {

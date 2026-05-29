@@ -78,6 +78,13 @@ const command = buildCommand({
         optional: false,
         default: envToBool(process.env["FOSSILIZE_SIGN"]),
       },
+      holePunch: {
+        kind: "boolean",
+        brief:
+          "Zero unused non-English ICU data before signing (smaller download; drops non-English i18n)",
+        optional: false,
+        default: envToBool(process.env["FOSSILIZE_HOLE_PUNCH"]),
+      },
       concurrencyLimit: {
         kind: "parsed",
         parse: Number,
