@@ -74,13 +74,13 @@ jobs:
 
       - name: Smoke test
         run: |
-            node dist/cli.js
+            node dist/bin/cli.js
 
       - name: Test with asset
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
             cd test
-            node ../dist/cli.js -a asset.txt --no-bundle sample.cjs
+            node ../dist/bin/cli.js -a asset.txt --no-bundle sample.cjs
             expected=$(cat asset.txt)
             actual=$(./dist-bin/sample-linux-x64)
             [ "$actual" = "$expected" ]
