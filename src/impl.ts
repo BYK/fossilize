@@ -9,7 +9,7 @@ import type { LocalContext } from "./context";
 import { getNodeBinary, resolveNodeVersion } from "./node-util";
 import pLimit from "p-limit";
 
-interface CommandFlags {
+export interface FossilizeOptions {
   readonly nodeVersion: string;
   readonly platforms?: string[];
   readonly assets?: string[];
@@ -51,11 +51,9 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
     console.error((err as ExecError).stdout);
     console.error((err as ExecError).stderr);
     const errorCode = (err as ExecError).code;
-    if (errorCode && Number.isInteger(errorCode)) {
-      process.exit((err as ExecError).code);
-    } else {
-      throw new Error("Bailing out as the command failed");
-    }
+    throw new Error(
+      `Command failed: ${cmd} ${args.join(" ")} (exit code: ${errorCode})`
+    );
   }
   if (output.stdout.trim()) {
     console.log(output.stdout);
@@ -67,7 +65,7 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
 
 export default async function (
   this: LocalContext,
-  flags: CommandFlags,
+  flags: FossilizeOptions,
   entrypoint: string
 ): Promise<void> {
   const entrypointStat = await fs.stat(entrypoint);
