@@ -20,10 +20,17 @@
         "import-meta-url.js",
         "entitlements.plist"
     ],
-    "main": "dist/cli.js",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
     "bin": {
-        "fossilize": "dist/cli.js",
-        "__fossilize_bash_complete": "dist/bash-complete.js"
+        "fossilize": "dist/bin/cli.js",
+        "__fossilize_bash_complete": "dist/bin/bash-complete.js"
     },
     "engines": {
         "node": ">=18"
@@ -36,6 +43,7 @@
     },
     "tsup": {
         "entry": [
+            "src/index.ts",
             "src/bin/cli.ts",
             "src/bin/bash-complete.ts"
         ],
@@ -46,7 +54,8 @@
         "clean": true,
         "splitting": true,
         "minify": true,
-        "sourcemap": true
+        "sourcemap": true,
+        "dts": true
     },
     "dependencies": {
         "@stricli/auto-complete": "^1.1.0",

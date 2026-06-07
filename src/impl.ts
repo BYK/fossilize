@@ -9,7 +9,7 @@ import type { LocalContext } from "./context";
 import { getNodeBinary, resolveNodeVersion } from "./node-util";
 import pLimit from "p-limit";
 
-interface CommandFlags {
+export interface FossilizeOptions {
   readonly nodeVersion: string;
   readonly platforms?: string[];
   readonly assets?: string[];
@@ -67,7 +67,7 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
 
 export default async function (
   this: LocalContext,
-  flags: CommandFlags,
+  flags: FossilizeOptions,
   entrypoint: string
 ): Promise<void> {
   const entrypointStat = await fs.stat(entrypoint);
