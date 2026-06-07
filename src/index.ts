@@ -1,5 +1,4 @@
 export type { FossilizeOptions } from "./impl";
-export type { SEAConfig } from "./impl";
 
 import type { FossilizeOptions } from "./impl";
 import { buildContext } from "./context";

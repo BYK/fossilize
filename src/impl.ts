@@ -51,11 +51,9 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
     console.error((err as ExecError).stdout);
     console.error((err as ExecError).stderr);
     const errorCode = (err as ExecError).code;
-    if (errorCode && Number.isInteger(errorCode)) {
-      process.exit((err as ExecError).code);
-    } else {
-      throw new Error("Bailing out as the command failed");
-    }
+    throw new Error(
+      `Command failed: ${cmd} ${args.join(" ")} (exit code: ${errorCode})`
+    );
   }
   if (output.stdout.trim()) {
     console.log(output.stdout);

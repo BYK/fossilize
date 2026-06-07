@@ -38,6 +38,28 @@ and then add a `compile` script to your project referencing fossilize:
 }
 ```
 
+### Programmatic API
+
+You can also use fossilize as a library in your build scripts:
+
+```ts
+import { fossilize } from "fossilize";
+
+await fossilize(
+  {
+    nodeVersion: "lts",
+    platforms: ["darwin-arm64", "linux-x64", "win-x64"],
+    outDir: "./dist-bin",
+    cacheDir: ".node-cache",
+    noBundle: false,
+    sign: false,
+    holePunch: false,
+    concurrencyLimit: 3,
+  },
+  "./src/main.ts",
+);
+```
+
 ### Supported Environment Variables
 
 - `FOSSILIZE_SIGN`
