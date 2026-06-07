@@ -1,4 +1,10 @@
 # Changelog
+## 0.9.0
+
+### New Features ✨
+
+- Add programmatic API export by @BYK in [#24](https://github.com/BYK/fossilize/pull/24)
+
 ## 0.8.1
 
 ### Bug Fixes 🐛
