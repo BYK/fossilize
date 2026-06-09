@@ -1,4 +1,10 @@
 # Changelog
+## 0.9.1
+
+### Bug Fixes 🐛
+
+- Ad-hoc sign darwin binaries when sign=false by @BYK in [#26](https://github.com/BYK/fossilize/pull/26)
+
 ## 0.9.0
 
 ### New Features ✨
