@@ -290,11 +290,43 @@ export default async function (
     }
 
     if (!flags.sign) {
-      console.log("Skipping signing, add `--sign` to sign the binary");
       if (platform.startsWith("darwin")) {
-        console.warn(
-          `macOS binaries must be signed to run. You can run \`spctl --add ${fossilizedBinary}\` to add the binary to your system's trusted binaries for testing.`
+        // Ad-hoc sign with entitlements — minimum required for Apple Silicon
+        // execution. Without at least ad-hoc signing, the kernel refuses to
+        // run the binary. Use native codesign on macOS, rcodesign elsewhere.
+        const entitlements = fileURLToPath(
+          import.meta.resolve("../entitlements.plist")
         );
+        try {
+          if (process.platform === "darwin") {
+            await run(
+              "codesign",
+              "--sign",
+              "-",
+              "--force",
+              "--entitlements",
+              entitlements,
+              fossilizedBinary
+            );
+          } else {
+            await run(
+              "rcodesign",
+              "sign",
+              "--code-signature-flags",
+              "runtime",
+              "--entitlements-xml-path",
+              entitlements,
+              fossilizedBinary
+            );
+          }
+          console.log(`Ad-hoc signed ${fossilizedBinary}`);
+        } catch {
+          console.warn(
+            `Warning: Could not ad-hoc sign ${fossilizedBinary}. ` +
+              `Install rcodesign or run on macOS for automatic signing. ` +
+              `The binary may not run on Apple Silicon without signing.`
+          );
+        }
       }
       return;
     }
