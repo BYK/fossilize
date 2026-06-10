@@ -72,6 +72,12 @@ const command = buildCommand({
         brief: "Do not bundle the entrypoint using esbuild",
         optional: false,
       },
+      noCodeCache: {
+        kind: "boolean",
+        brief:
+          "Do not embed a V8 startup code cache in the host-platform binary",
+        optional: true,
+      },
       sign: {
         kind: "boolean",
         brief: "Skip signing for macOS and Windows",

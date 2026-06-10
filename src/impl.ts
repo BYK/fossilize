@@ -19,6 +19,7 @@ export interface FossilizeOptions {
   readonly cacheDir: string;
   readonly noCache?: boolean;
   readonly noBundle: boolean;
+  readonly noCodeCache?: boolean;
   readonly sign: boolean;
   readonly holePunch: boolean;
   readonly concurrencyLimit: number;
@@ -61,6 +62,74 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
     console.log(`> ${[cmd, ...args].join(" ")}`);
   }
   return output.stdout;
+}
+
+// Apply the macOS code signature (ad-hoc or full identity) to a binary.
+// This intentionally does NOT notarize — it is the smallest unit of work that
+// puts the binary into its final signing state. It is extracted so the exact
+// same signature can be applied to both the throwaway code-cache "seed" binary
+// and the final executable: V8 only accepts a code cache when the consuming
+// binary runs with the same hardened-runtime/JIT entitlements (and therefore
+// the same V8 flag-hash) as the binary that generated it. See issue #28.
+// No-op on non-darwin platforms (linux is unsigned; Windows signing is the
+// user's responsibility).
+async function signBinary(
+  binaryPath: string,
+  platform: string,
+  sign: boolean
+): Promise<void> {
+  if (!platform.startsWith("darwin")) {
+    return;
+  }
+  const entitlements = fileURLToPath(
+    import.meta.resolve("../entitlements.plist")
+  );
+  if (!sign) {
+    // Ad-hoc sign with entitlements — minimum required for Apple Silicon
+    // execution. Use native codesign on macOS, rcodesign elsewhere.
+    if (process.platform === "darwin") {
+      await run(
+        "codesign",
+        "--sign",
+        "-",
+        "--force",
+        "--entitlements",
+        entitlements,
+        binaryPath
+      );
+    } else {
+      await run(
+        "rcodesign",
+        "sign",
+        "--code-signature-flags",
+        "runtime",
+        "--entitlements-xml-path",
+        entitlements,
+        binaryPath
+      );
+    }
+    return;
+  }
+  const { APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD } = process.env;
+  if (!APPLE_TEAM_ID || !APPLE_CERT_PATH || !APPLE_CERT_PASSWORD) {
+    throw new Error(
+      "Missing required environment variables for macOS signing (at least one of APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD)"
+    );
+  }
+  await run(
+    "rcodesign",
+    "sign",
+    "--team-name",
+    APPLE_TEAM_ID,
+    "--p12-file",
+    APPLE_CERT_PATH,
+    "--p12-password",
+    APPLE_CERT_PASSWORD,
+    "--for-notarization",
+    "-e",
+    entitlements,
+    binaryPath
+  );
 }
 
 export default async function (
@@ -147,21 +216,19 @@ export default async function (
     }
   }
 
-  // Determine if any target matches the build host — code cache is only
-  // valid for the same CPU architecture, so we generate two blobs when
-  // cross-compiling: one with code cache (host platform) and one without.
-  const hostIsTarget = platforms.includes(currentPlatform);
-  const needsCrossBlob = platforms.length > 1 || !hostIsTarget;
-
+  // The base blob never carries a V8 code cache. Code cache is both
+  // CPU-architecture- AND signing-state-specific: V8 rejects it at runtime
+  // unless the consuming binary runs with the same flag-hash as the binary
+  // that produced it. We therefore generate the host platform's code-cache
+  // blob lazily inside createBinaryForPlatform() using a copy of the prepared
+  // (unsigned, stripped) host binary signed exactly like the final executable.
+  // See issue #28.
   const seaConfig: SEAConfig = {
     main: jsBundlePath,
     output: blobPath,
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
-    // Enable code cache when building only for the host platform.
-    // When cross-compiling, the base blob is generated without code cache;
-    // a second blob with code cache is created for the host platform below.
-    useCodeCache: hostIsTarget && !needsCrossBlob,
+    useCodeCache: false,
   };
   if (flags.assetManifest) {
     const manifest = JSON.parse(
@@ -204,25 +271,11 @@ export default async function (
   );
   await run(targetNodeBinary, "--experimental-sea-config", seaConfigPath);
 
-  // When cross-compiling AND the host platform is a target, generate a
-  // second blob with V8 code cache enabled. Code cache pre-compiles the
-  // JS into bytecode, saving ~15% startup time — but the bytecode is
-  // CPU-architecture-specific, so it only works for the host platform.
+  // Path for the host platform's code-cache blob. It is generated lazily
+  // inside createBinaryForPlatform() once the prepared host binary exists, so
+  // that the cache is produced by a binary in the same signing state as the
+  // final executable (otherwise V8 rejects it — see issue #28).
   const codeCacheBlobPath = `${blobPath}.codecache`;
-  let hasCodeCacheBlob = false;
-  if (hostIsTarget && needsCrossBlob) {
-    const codeCacheConfig: SEAConfig = {
-      ...seaConfig,
-      useCodeCache: true,
-      output: codeCacheBlobPath,
-    };
-    const codeCacheConfigPath = `${seaConfigPath}.codecache`;
-    await fs.writeFile(codeCacheConfigPath, JSON.stringify(codeCacheConfig));
-    console.log(`Generating code-cache blob for host platform (${currentPlatform})...`);
-    await run(targetNodeBinary, "--experimental-sea-config", codeCacheConfigPath);
-    await fs.rm(codeCacheConfigPath);
-    hasCodeCacheBlob = true;
-  }
 
   const createBinaryForPlatform = async (platform: string): Promise<void> => {
     const outputPath = path.join(flags.outDir, outputName);
@@ -254,12 +307,50 @@ export default async function (
       }
     }
 
-    // Use the code-cache blob for the host platform, base blob for others
-    const blobForPlatform = (hasCodeCacheBlob && platform === currentPlatform)
-      ? codeCacheBlobPath
-      : blobPath;
-    const cacheLabel = blobForPlatform === codeCacheBlobPath ? " (with code cache)" : "";
-    console.log(`Injecting blob into node executable: ${fossilizedBinary}${cacheLabel}`);
+    // The host platform gets a V8 code cache for faster startup (~15%). Code
+    // cache is CPU-arch- AND signing-state-specific, so it must be generated by
+    // a binary in the same state the final executable will run in. We sign a
+    // throwaway copy of the prepared (unsigned, stripped) host binary exactly
+    // like the final binary, generate the cache with it, then inject that blob.
+    // Generating with the official (differently-signed) download instead makes
+    // V8 reject the cache at runtime ("Code cache data rejected"). See #28.
+    let blobForPlatform = blobPath;
+    if (platform === currentPlatform && !flags.noCodeCache) {
+      const cacheSeed = `${fossilizedBinary}.cacheseed`;
+      try {
+        await fs.copyFile(fossilizedBinary, cacheSeed);
+        await fs.chmod(cacheSeed, 0o755);
+        await signBinary(cacheSeed, platform, flags.sign);
+        const codeCacheConfig: SEAConfig = {
+          ...seaConfig,
+          useCodeCache: true,
+          output: codeCacheBlobPath,
+        };
+        const codeCacheConfigPath = `${seaConfigPath}.codecache`;
+        await fs.writeFile(codeCacheConfigPath, JSON.stringify(codeCacheConfig));
+        console.log(
+          `Generating code-cache blob for host platform (${currentPlatform})...`
+        );
+        await run(cacheSeed, "--experimental-sea-config", codeCacheConfigPath);
+        await fs.rm(codeCacheConfigPath, { force: true });
+        blobForPlatform = codeCacheBlobPath;
+      } catch (err) {
+        console.warn(
+          `  Warning: could not generate V8 code cache for ${platform}, ` +
+            `falling back to no code cache (non-fatal): ${
+              (err as Error).message
+            }`
+        );
+        blobForPlatform = blobPath;
+      } finally {
+        await fs.rm(cacheSeed, { force: true });
+      }
+    }
+    const cacheLabel =
+      blobForPlatform === codeCacheBlobPath ? " (with code cache)" : "";
+    console.log(
+      `Injecting blob into node executable: ${fossilizedBinary}${cacheLabel}`
+    );
     await inject(
       fossilizedBinary,
       "NODE_SEA_BLOB",
@@ -293,32 +384,9 @@ export default async function (
       if (platform.startsWith("darwin")) {
         // Ad-hoc sign with entitlements — minimum required for Apple Silicon
         // execution. Without at least ad-hoc signing, the kernel refuses to
-        // run the binary. Use native codesign on macOS, rcodesign elsewhere.
-        const entitlements = fileURLToPath(
-          import.meta.resolve("../entitlements.plist")
-        );
+        // run the binary.
         try {
-          if (process.platform === "darwin") {
-            await run(
-              "codesign",
-              "--sign",
-              "-",
-              "--force",
-              "--entitlements",
-              entitlements,
-              fossilizedBinary
-            );
-          } else {
-            await run(
-              "rcodesign",
-              "sign",
-              "--code-signature-flags",
-              "runtime",
-              "--entitlements-xml-path",
-              entitlements,
-              fossilizedBinary
-            );
-          }
+          await signBinary(fossilizedBinary, platform, false);
           console.log(`Ad-hoc signed ${fossilizedBinary}`);
         } catch {
           console.warn(
@@ -339,32 +407,9 @@ export default async function (
     }
 
     if (platform.startsWith("darwin")) {
-      const {
-        APPLE_TEAM_ID,
-        APPLE_CERT_PATH,
-        APPLE_CERT_PASSWORD,
-        APPLE_API_KEY_PATH,
-      } = process.env;
-      if (!APPLE_TEAM_ID || !APPLE_CERT_PATH || !APPLE_CERT_PASSWORD) {
-        throw new Error(
-          "Missing required environment variables for macOS signing (at least one of APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD)"
-        );
-      }
+      const { APPLE_API_KEY_PATH } = process.env;
       console.log(`Signing ${fossilizedBinary}...`);
-      await run(
-        "rcodesign",
-        "sign",
-        "--team-name",
-        APPLE_TEAM_ID,
-        "--p12-file",
-        APPLE_CERT_PATH,
-        "--p12-password",
-        APPLE_CERT_PASSWORD,
-        "--for-notarization",
-        "-e",
-        fileURLToPath(import.meta.resolve("../entitlements.plist")),
-        fossilizedBinary
-      );
+      await signBinary(fossilizedBinary, platform, true);
       if (!APPLE_API_KEY_PATH) {
         console.warn(
           "Missing required environment variable for macOS notarization, you won't be able to notarize this binary which will annoy people trying to run it."
@@ -391,9 +436,9 @@ export default async function (
       limit(() => createBinaryForPlatform(platform))
     )
   );
-  const cleanups = [fs.rm(seaConfigPath), fs.rm(blobPath)];
-  if (hasCodeCacheBlob) {
-    cleanups.push(fs.rm(codeCacheBlobPath));
-  }
-  await Promise.all(cleanups);
+  await Promise.all([
+    fs.rm(seaConfigPath, { force: true }),
+    fs.rm(blobPath, { force: true }),
+    fs.rm(codeCacheBlobPath, { force: true }),
+  ]);
 }
