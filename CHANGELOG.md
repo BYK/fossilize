@@ -1,4 +1,10 @@
 # Changelog
+## 0.9.2
+
+### Bug Fixes 🐛
+
+- Generate SEA code cache with the final signed binary (#28) by @BYK in [#29](https://github.com/BYK/fossilize/pull/29)
+
 ## 0.9.1
 
 ### Bug Fixes 🐛
