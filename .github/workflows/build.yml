@@ -76,13 +76,37 @@ jobs:
         run: |
             node dist/bin/cli.js
 
-      - name: Test with asset
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Test with asset (and V8 code cache acceptance)
         run: |
             cd test
-            node ../dist/bin/cli.js -a asset.txt --no-bundle sample.cjs
+            # Build a single-platform host binary with an embedded V8 code
+            # cache (the exact config from issue #28). Assert the cache is
+            # actually embedded AND that it is accepted at runtime (no
+            # "Code cache data rejected" warning). macos-latest is arm64,
+            # which is where the cache rejection originally reproduced.
+            build_log=$(node ../dist/bin/cli.js -a asset.txt --no-bundle sample.cjs 2>&1)
+            echo "$build_log"
+            if ! echo "$build_log" | grep -q "with code cache"; then
+              echo "FAIL: host binary was built without an embedded V8 code cache"
+              exit 1
+            fi
+            set -- dist-bin/sample-*
+            bin=$1
+            echo "Running $bin"
+            set +e
+            actual=$("$bin" 2>stderr.txt)
+            rc=$?
+            set -e
+            echo "----- stderr -----"; cat stderr.txt; echo "------------------"
+            if [ "$rc" -ne 0 ]; then
+              echo "FAIL: binary exited with code $rc"
+              exit 1
+            fi
+            if grep -q "Code cache data rejected" stderr.txt; then
+              echo "FAIL: V8 rejected the embedded code cache at runtime (issue #28)"
+              exit 1
+            fi
             expected=$(cat asset.txt)
-            actual=$(./dist-bin/sample-linux-x64)
             [ "$actual" = "$expected" ]
 
   artifacts:

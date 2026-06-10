@@ -63,6 +63,33 @@ async function getNodeBinaryFromCache(
   return targetFile;
 }
 
+/**
+ * Strip an embedded code signature from a binary in place. Used to return a
+ * binary we temporarily signed (to generate a matching V8 code cache) back to
+ * the unsigned state postject expects before injection. No-op on Linux and
+ * when the binary carries no signature.
+ */
+export async function unsignBinaryInPlace(
+  filePath: string,
+  platform: string
+): Promise<void> {
+  if (!platform.startsWith("darwin") && !platform.startsWith("win")) {
+    return;
+  }
+  const buffer = await fs.readFile(filePath);
+  const unsigned: ArrayBufferLike | null = platform.startsWith("win")
+    ? signatureSet(buffer, null)
+    : unsign(buffer.buffer);
+  // `null` means there was no signature to strip — nothing to do.
+  if (unsigned) {
+    // Preserve the original file mode — fs.writeFile defaults to 0o666
+    // (masked by umask → typically 0o644), which would lose the execute bit.
+    const { mode } = await fs.stat(filePath);
+    await fs.writeFile(filePath, Buffer.from(unsigned));
+    await fs.chmod(filePath, mode);
+  }
+}
+
 const NODE_VERSIONS_INDEX_URL =
   "https://nodejs.org/download/release/index.json";
 const NODE_VERSION_REGEX = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/i;
