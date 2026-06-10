@@ -71,10 +71,11 @@ async function run(cmd: string, ...args: string[]): Promise<string> {
 // Apply the macOS code signature (ad-hoc or full identity) to a binary.
 // This intentionally does NOT notarize — it is the smallest unit of work that
 // puts the binary into its final signing state. It is extracted so the exact
-// same signature can be applied to both the throwaway code-cache "seed" binary
-// and the final executable: V8 only accepts a code cache when the consuming
-// binary runs with the same hardened-runtime/JIT entitlements (and therefore
-// the same V8 flag-hash) as the binary that generated it. See issue #28.
+// same signature can be applied during code-cache generation (on the prepared
+// host binary, before injection) and to the final executable: V8 only accepts
+// a code cache when the consuming binary runs with the same hardened-runtime /
+// JIT entitlements (and therefore the same V8 flag-hash) as the binary that
+// generated it. See issue #28.
 // No-op on non-darwin platforms (linux is unsigned; Windows signing is the
 // user's responsibility).
 async function signBinary(
@@ -275,6 +276,20 @@ export default async function (
   );
   await run(targetNodeBinary, "--experimental-sea-config", seaConfigPath);
 
+  // Fail fast when signing is requested for darwin targets but the required
+  // environment variables are missing — avoids a confusing intermediate
+  // "could not generate code cache" warning before the real crash.
+  if (flags.sign && platforms.some((p) => p.startsWith("darwin"))) {
+    const { APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD } =
+      process.env;
+    if (!APPLE_TEAM_ID || !APPLE_CERT_PATH || !APPLE_CERT_PASSWORD) {
+      throw new Error(
+        "Missing required environment variables for macOS signing " +
+          "(at least one of APPLE_TEAM_ID, APPLE_CERT_PATH, APPLE_CERT_PASSWORD)"
+      );
+    }
+  }
+
   // Path for the host platform's code-cache blob. It is generated lazily
   // inside createBinaryForPlatform() once the prepared host binary exists, so
   // that the cache is produced by a binary in the same signing state as the
@@ -378,7 +393,7 @@ export default async function (
       }
     );
     console.log("Created executable", fossilizedBinary);
-    fs.chmod(fossilizedBinary, 0o755);
+    await fs.chmod(fossilizedBinary, 0o755);
 
     // Hole-punch unused ICU data before signing so the signature covers the
     // final bytes. Must run after SEA injection (ICU blob lives in the Node

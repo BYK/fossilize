@@ -82,7 +82,11 @@ export async function unsignBinaryInPlace(
     : unsign(buffer.buffer);
   // `null` means there was no signature to strip — nothing to do.
   if (unsigned) {
+    // Preserve the original file mode — fs.writeFile defaults to 0o666
+    // (masked by umask → typically 0o644), which would lose the execute bit.
+    const { mode } = await fs.stat(filePath);
     await fs.writeFile(filePath, Buffer.from(unsigned));
+    await fs.chmod(filePath, mode);
   }
 }
 
