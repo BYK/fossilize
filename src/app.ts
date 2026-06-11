@@ -78,6 +78,12 @@ const command = buildCommand({
           "Do not embed a V8 startup code cache in the host-platform binary",
         optional: true,
       },
+      ignoreNodeOptions: {
+        kind: "boolean",
+        brief:
+          "Make the binary ignore the NODE_OPTIONS env var (keeps an embedded V8 code cache valid when users set V8 flags)",
+        optional: true,
+      },
       sign: {
         kind: "boolean",
         brief: "Skip signing for macOS and Windows",

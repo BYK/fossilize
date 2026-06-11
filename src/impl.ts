@@ -8,6 +8,7 @@ import { inject } from "postject";
 import type { LocalContext } from "./context";
 import {
   getNodeBinary,
+  neutralizeNodeOptions,
   resolveNodeVersion,
   unsignBinaryInPlace,
 } from "./node-util";
@@ -24,6 +25,7 @@ export interface FossilizeOptions {
   readonly noCache?: boolean;
   readonly noBundle: boolean;
   readonly noCodeCache?: boolean;
+  readonly ignoreNodeOptions?: boolean;
   readonly sign: boolean;
   readonly holePunch: boolean;
   readonly concurrencyLimit: number;
@@ -324,6 +326,19 @@ export default async function (
         // Non-fatal: may fail when cross-stripping (e.g., macOS Mach-O on Linux)
         console.warn(`  Warning: strip failed for ${platform} (non-fatal)`);
       }
+    }
+
+    // Optionally make the binary ignore the NODE_OPTIONS env var (like
+    // `./configure --without-node-options`). User-set V8 flags in NODE_OPTIONS
+    // (e.g. --max-old-space-size) change V8's FlagList::Hash() at runtime and
+    // would otherwise make V8 reject the embedded code cache below ("Code
+    // cache data rejected"). Done before code-cache generation and signing so
+    // both the generated cache and the final signature cover the patched bytes
+    // (and the cache is produced in the same "NODE_OPTIONS-ignored" state the
+    // final binary runs in).
+    if (flags.ignoreNodeOptions) {
+      await neutralizeNodeOptions(fossilizedBinary);
+      console.log(`> neutralized NODE_OPTIONS lookup in ${fossilizedBinary}`);
     }
 
     // The host platform gets a V8 code cache for faster startup (~15%). Code
