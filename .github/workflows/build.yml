@@ -116,7 +116,9 @@ jobs:
             # would otherwise make V8 reject the embedded code cache at runtime
             # ("Code cache data rejected"). --ignore-node-options neutralizes the
             # NODE_OPTIONS lookup in the binary so the cache stays valid.
-            build_log=$(node ../dist/bin/cli.js -a asset.txt --no-bundle --ignore-node-options sample.cjs 2>&1)
+            # Build with `-n lts` so we exercise the newest Node layout (the
+            # constant is pooled differently across Node versions/platforms).
+            build_log=$(node ../dist/bin/cli.js -n lts -a asset.txt --no-bundle --ignore-node-options sample.cjs 2>&1)
             echo "$build_log"
             if ! echo "$build_log" | grep -q "neutralized NODE_OPTIONS"; then
               echo "FAIL: NODE_OPTIONS lookup was not neutralized"
