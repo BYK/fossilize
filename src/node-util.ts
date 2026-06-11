@@ -90,6 +90,110 @@ export async function unsignBinaryInPlace(
   }
 }
 
+// The env-var name Node reads at bootstrap to source extra CLI/V8 flags.
+const NODE_OPTIONS_ENV = "NODE_OPTIONS";
+// Same byte length as NODE_OPTIONS (12) so nothing shifts; not a real env var,
+// so `getenv()` returns null and Node applies no flags from NODE_OPTIONS.
+const NODE_OPTIONS_REPLACEMENT = "NODE_OPTIQNS";
+
+// A byte is "C-string-ish" if it could appear in a run of null-terminated
+// ASCII string constants: NUL padding or printable ASCII (incl. tab/newline).
+function isCStringByte(b: number): boolean {
+  return b === 0 || b === 9 || b === 10 || b === 13 || (b >= 0x20 && b <= 0x7e);
+}
+
+function allCStringBytes(buf: Buffer): boolean {
+  for (const b of buf) {
+    if (!isCStringByte(b)) return false;
+  }
+  return true;
+}
+
+/**
+ * Find the offsets of the `NODE_OPTIONS` C-string constant(s) that the Node
+ * C++ bootstrap feeds to `credentials::SafeGetenv()`.
+ *
+ * A Node binary holds ~10 copies of the literal `NODE_OPTIONS`:
+ *   - the `.rodata` env-var-name C string (what we want),
+ *   - error-message / help fragments (`NODE_OPTIONS (invalid escape)`, …),
+ *   - JS bootstrap source (`'NODE_OPTIONS'`, `process.env.NODE_OPTIONS`),
+ *   - and copies inside the **checksummed V8 startup snapshot**, which MUST
+ *     NOT be modified (patching them breaks startup).
+ *
+ * We select the `.rodata` constant in a format-agnostic way (works for Mach-O,
+ * ELF and PE) by requiring the occurrence to be:
+ *   1. null-bounded — `\0NODE_OPTIONS\0` (excludes JS quotes and the
+ *      ` (invalid escape)` error fragments), and
+ *   2. surrounded by other C-strings — the 16 bytes on each side are all
+ *      NUL-or-printable-ASCII. The snapshot copies sit next to non-printable
+ *      serialized bytes (e.g. `Rbz\xae C`) and are thereby excluded.
+ *
+ * Verified to return exactly the one correct `.rodata` offset on the official
+ * node-v22.14.0 darwin-arm64, linux-x64, linux-arm64 and win-x64 builds.
+ */
+function findNodeOptionsConstants(buffer: Buffer): number[] {
+  const needle = Buffer.from(NODE_OPTIONS_ENV, "latin1");
+  const offsets: number[] = [];
+  let from = 0;
+  for (;;) {
+    const j = buffer.indexOf(needle, from);
+    if (j < 0) break;
+    from = j + 1;
+    const end = j + needle.length;
+    const nullBounded = j > 0 && buffer[j - 1] === 0 && buffer[end] === 0;
+    if (!nullBounded) continue;
+    const before = buffer.subarray(Math.max(0, j - 16), j);
+    const after = buffer.subarray(end + 1, end + 1 + 16);
+    if (allCStringBytes(before) && allCStringBytes(after)) {
+      offsets.push(j);
+    }
+  }
+  return offsets;
+}
+
+/**
+ * Neutralize the `NODE_OPTIONS` environment-variable lookup inside a Node
+ * binary, in place. This makes the binary behave as if it were built with
+ * `./configure --without-node-options`: V8 flags a user sets via
+ * `NODE_OPTIONS` are ignored, so the runtime V8 flag-hash matches the
+ * build-time default and an embedded V8 code cache is accepted instead of
+ * rejected ("Code cache data rejected").
+ *
+ * Only the C++ `.rodata` lookup constant is renamed; the process environment
+ * is untouched, so `process.env.NODE_OPTIONS` is still visible to the app and
+ * still inherited by any child process it spawns.
+ *
+ * Throws if no candidate is found, so a layout change in a future Node release
+ * fails the build loudly rather than silently shipping a binary whose code
+ * cache would be rejected.
+ */
+export async function neutralizeNodeOptions(filePath: string): Promise<void> {
+  const replacement = Buffer.from(NODE_OPTIONS_REPLACEMENT, "latin1");
+  if (replacement.length !== NODE_OPTIONS_ENV.length) {
+    throw new Error(
+      `NODE_OPTIONS replacement must be exactly ${NODE_OPTIONS_ENV.length} bytes ` +
+        `to preserve binary layout (got ${replacement.length}).`
+    );
+  }
+  const buffer = await fs.readFile(filePath);
+  const offsets = findNodeOptionsConstants(buffer);
+  if (offsets.length === 0) {
+    throw new Error(
+      `Could not find the NODE_OPTIONS lookup constant to neutralize in ${filePath}. ` +
+        `The Node.js binary layout may have changed — refusing to ship a binary whose ` +
+        `embedded V8 code cache would be rejected when NODE_OPTIONS is set.`
+    );
+  }
+  // Patch every matching `.rodata` constant (normally exactly one); leave the
+  // trailing NUL and following neighbour intact by overwriting only 12 bytes.
+  for (const idx of offsets) {
+    replacement.copy(buffer, idx);
+  }
+  const { mode } = await fs.stat(filePath);
+  await fs.writeFile(filePath, buffer);
+  await fs.chmod(filePath, mode);
+}
+
 const NODE_VERSIONS_INDEX_URL =
   "https://nodejs.org/download/release/index.json";
 const NODE_VERSION_REGEX = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/i;
