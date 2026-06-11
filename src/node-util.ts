@@ -113,23 +113,31 @@ function allCStringBytes(buf: Buffer): boolean {
  * Find the offsets of the `NODE_OPTIONS` C-string constant(s) that the Node
  * C++ bootstrap feeds to `credentials::SafeGetenv()`.
  *
- * A Node binary holds ~10 copies of the literal `NODE_OPTIONS`:
- *   - the `.rodata` env-var-name C string (what we want),
+ * A Node binary holds ~10-12 copies of the literal `NODE_OPTIONS`:
+ *   - the `.rodata` env-var-name C string (the lookup constant — what we want),
  *   - error-message / help fragments (`NODE_OPTIONS (invalid escape)`, …),
  *   - JS bootstrap source (`'NODE_OPTIONS'`, `process.env.NODE_OPTIONS`),
  *   - and copies inside the **checksummed V8 startup snapshot**, which MUST
  *     NOT be modified (patching them breaks startup).
  *
- * We select the `.rodata` constant in a format-agnostic way (works for Mach-O,
- * ELF and PE) by requiring the occurrence to be:
- *   1. null-bounded — `\0NODE_OPTIONS\0` (excludes JS quotes and the
- *      ` (invalid escape)` error fragments), and
+ * We select the C-string constant(s) in a format-agnostic way (works for
+ * Mach-O, ELF and PE) by requiring the occurrence to be:
+ *   1. NUL-terminated — `NODE_OPTIONS\0` (a real C string). This excludes the
+ *      JS copies, which are followed by `'`/`)` rather than NUL, and the
+ *      `NODE_OPTIONS (invalid escape)` fragments, where text follows the name.
+ *      We intentionally do NOT require a NUL *before* the name: with the MSVC
+ *      linker (Windows) the `getenv` argument is suffix-pooled into the
+ *      "… is not allowed in NODE_OPTIONS" error string, so it is preceded by
+ *      text, not a NUL.
  *   2. surrounded by other C-strings — the 16 bytes on each side are all
  *      NUL-or-printable-ASCII. The snapshot copies sit next to non-printable
  *      serialized bytes (e.g. `Rbz\xae C`) and are thereby excluded.
  *
- * Verified to return exactly the one correct `.rodata` offset on the official
- * node-v22.14.0 darwin-arm64, linux-x64, linux-arm64 and win-x64 builds.
+ * This may match the lookup constant *and* a harmless error-message string
+ * that also ends in `NODE_OPTIONS` — both are patched, which is safe (the
+ * error text is only ever shown for a flag we now ignore). Verified to include
+ * the lookup constant on official node-v22.14.0 and node-v24.16.0
+ * darwin-arm64, linux-x64, linux-arm64 and win-x64 builds.
  */
 function findNodeOptionsConstants(buffer: Buffer): number[] {
   const needle = Buffer.from(NODE_OPTIONS_ENV, "latin1");
@@ -140,8 +148,7 @@ function findNodeOptionsConstants(buffer: Buffer): number[] {
     if (j < 0) break;
     from = j + 1;
     const end = j + needle.length;
-    const nullBounded = j > 0 && buffer[j - 1] === 0 && buffer[end] === 0;
-    if (!nullBounded) continue;
+    if (buffer[end] !== 0) continue; // must be a NUL-terminated C string
     const before = buffer.subarray(Math.max(0, j - 16), j);
     const after = buffer.subarray(end + 1, end + 1 + 16);
     if (allCStringBytes(before) && allCStringBytes(after)) {
