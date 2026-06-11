@@ -1,4 +1,10 @@
 # Changelog
+## 0.10.1
+
+### Bug Fixes 🐛
+
+- Select NODE_OPTIONS constant by NUL-termination (fixes win-x64 / node 24) by @BYK in [#33](https://github.com/BYK/fossilize/pull/33)
+
 ## 0.10.0
 
 ### New Features ✨
