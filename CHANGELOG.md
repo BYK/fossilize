@@ -1,4 +1,10 @@
 # Changelog
+## 0.10.0
+
+### New Features ✨
+
+- --ignore-node-options to keep the embedded V8 code cache valid by @BYK in [#31](https://github.com/BYK/fossilize/pull/31)
+
 ## 0.9.2
 
 ### Bug Fixes 🐛
