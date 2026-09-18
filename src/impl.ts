@@ -13,6 +13,7 @@ import {
   unsignBinaryInPlace,
 } from "./node-util";
 import pLimit from "p-limit";
+import { collectAssets, collectViteManifestAssets } from "./assets";
 
 export interface FossilizeOptions {
   readonly nodeVersion: string;
@@ -238,36 +239,19 @@ export default async function (
     useCodeCache: false,
   };
   if (flags.assetManifest) {
-    const manifest = JSON.parse(
-      await fs.readFile(flags.assetManifest, "utf-8")
-    ) as Record<
-      string,
-      { file: string; isEntry?: boolean; name: string; src: string }
-    >;
-    const assetsDir = path.dirname(flags.assetManifest);
-    seaConfig.assets = {
-      [path.basename(flags.assetManifest)]: flags.assetManifest,
-      ...Object.fromEntries(
-        Object.values(manifest).map((entry) => [
-          entry.file,
-          path.join(assetsDir, entry.file),
-        ])
-      ),
-    };
-    const entryPointName = Object.entries(manifest).find(
-      ([_, value]) => value.isEntry
-    )?.[0];
-    if (entryPointName) {
-      seaConfig.assets[entryPointName] = path.join(assetsDir, entryPointName);
-    }
+    seaConfig.assets = await collectViteManifestAssets(flags.assetManifest);
   }
 
   if (flags.assets) {
-    seaConfig.assets = seaConfig.assets || {};
-    for (const asset of flags.assets) {
-      const assetPath = path.resolve(asset);
-      seaConfig.assets[asset] = assetPath;
-    }
+    seaConfig.assets = {
+      ...seaConfig.assets,
+      ...(await collectAssets(flags.assets)),
+    };
+  }
+
+  if (seaConfig.assets) {
+    const count = Object.keys(seaConfig.assets).length;
+    console.log(`Embedding ${count} asset${count === 1 ? "" : "s"}`);
   }
 
   await fs.writeFile(seaConfigPath, JSON.stringify(seaConfig));

@@ -33,7 +33,8 @@ const command = buildCommand({
       assets: {
         kind: "parsed",
         parse: String,
-        brief: "Any assets to bundle in", // Mention SEA read assets
+        brief:
+          "Files or directories to embed as SEA assets (`<path>[=<key>]`; directories are embedded recursively under `<key>/`)",
         variadic: true,
         optional: true,
       },
@@ -41,7 +42,7 @@ const command = buildCommand({
         kind: "parsed",
         parse: String,
         brief:
-          "Path to the asset manifest.json from Vite (this will auto discover assets)",
+          "Path to Vite's build manifest.json (embeds every chunk, its CSS and its static assets)",
         optional: true,
       },
       outDir: {
