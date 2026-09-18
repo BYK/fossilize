@@ -1,4 +1,6 @@
 export type { FossilizeOptions } from "./impl";
+export type { AssetMap, ViteManifest, ViteManifestChunk } from "./assets";
+export { collectAssets, collectViteManifestAssets } from "./assets";
 
 import type { FossilizeOptions } from "./impl";
 import { buildContext } from "./context";

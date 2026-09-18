@@ -1,0 +1,10 @@
+{
+  "index.html": {
+    "file": "assets/index-abc123.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "css": ["assets/index-def456.css"],
+    "assets": ["assets/logo-789xyz.svg"]
+  }
+}

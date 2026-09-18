@@ -109,6 +109,24 @@ jobs:
             expected=$(cat asset.txt)
             [ "$actual" = "$expected" ]
 
+      - name: Test with directory and Vite manifest assets
+        run: |
+            cd test
+            # -a <dir>=<key> embeds the tree recursively under <key>/ with
+            # POSIX separators (also on Windows).
+            node ../dist/bin/cli.js -a assets-dir=data --no-bundle sample-dir.cjs
+            set -- dist-bin/sample-dir*
+            actual=$("$1")
+            echo "$actual"
+            [ "$actual" = "alpha beta" ]
+            # -m embeds every chunk plus its css/assets and the entry HTML,
+            # resolving them from the Vite outDir (parent of .vite/).
+            node ../dist/bin/cli.js -m vite-dist/.vite/manifest.json --no-bundle sample-vite.cjs
+            set -- dist-bin/sample-vite*
+            actual=$("$1")
+            echo "$actual"
+            [ "$actual" = "index.html assets/index-abc123.js assets/index-def456.css assets/logo-789xyz.svg" ]
+
       - name: Test --ignore-node-options keeps the code cache valid under NODE_OPTIONS
         run: |
             cd test

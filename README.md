@@ -78,6 +78,38 @@ that using the [Node SEA][3] feature.
 It also supports embedding assets either file by file, from a directory, or
 through a Vite manifest.
 
+### Embedding assets
+
+Assets are read back at runtime with [`sea.getRawAsset(key)`][8].
+
+```shell
+# a single file, key is the path as given: getRawAsset("asset.txt")
+fossilize -a asset.txt main.js
+
+# a file under a different key: getRawAsset("data/hello.txt")
+fossilize -a build/hello.txt=data/hello.txt main.js
+
+# a whole directory, recursively: getRawAsset("dist/ui/index.html"),
+# getRawAsset("dist/ui/assets/index-abc123.js"), ...
+fossilize -a dist/ui main.js
+
+# the same tree under a shorter key prefix: getRawAsset("ui/index.html")
+fossilize -a dist/ui=ui main.js
+
+# ... or at the root of the asset namespace: getRawAsset("index.html")
+fossilize -a dist/ui= main.js
+
+# everything a Vite build produced (build.manifest: true in vite.config):
+# each chunk, the CSS and static assets it references, index.html, and the
+# manifest itself as getRawAsset("manifest.json")
+fossilize -m dist/.vite/manifest.json main.js
+```
+
+Directory keys always use `/` as the separator, regardless of the host OS.
+Files from Vite's `public/` directory are not listed in the manifest — embed
+them with `-a dist/favicon.svg=favicon.svg` or by passing the whole `dist`
+directory with `-a dist=`. Later `-a` specs win when keys collide.
+
 ## Why?
 
 Long version: [https://byk.im/posts/fossilize/](https://byk.im/posts/fossilize/)
@@ -141,3 +173,4 @@ Further documentation will be added about how to obtain and use these.
 [5]: https://deno.com/
 [6]: https://docs.deno.com/runtime/reference/cli/compile/
 [7]: https://www.npmjs.com/package/postject
+[8]: https://nodejs.org/api/single-executable-applications.html#seagetrawassetkey
