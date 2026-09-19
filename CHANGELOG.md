@@ -1,4 +1,14 @@
 # Changelog
+## 0.11.0
+
+### New Features ✨
+
+- (assets) Embed directories with key prefixes and every Vite manifest output by @devin-ai-integration in [#37](https://github.com/BYK/fossilize/pull/37)
+
+### Internal Changes 🔧
+
+- (publish) Honour the publish issue's target checklist by @devin-ai-integration in [#35](https://github.com/BYK/fossilize/pull/35)
+
 ## 0.10.1
 
 ### Bug Fixes 🐛
