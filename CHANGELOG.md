@@ -1,4 +1,10 @@
 # Changelog
+## 0.12.0
+
+### New Features ✨
+
+- Fall back to Node.js unofficial builds for platforms like linuxarm64-musl by @BYK in [#40](https://github.com/BYK/fossilize/pull/40)
+
 ## 0.11.0
 
 ### New Features ✨
