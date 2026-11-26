@@ -76,6 +76,9 @@ jobs:
         run: |
             node dist/bin/cli.js
 
+      - name: Test Node.js download sources
+        run: npm test
+
       - name: Test with asset (and V8 code cache acceptance)
         run: |
             cd test
