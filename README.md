@@ -68,6 +68,23 @@ await fossilize(
 - `FOSSILIZE_PLATFORMS` (comma separated)
 - `FOSSILIZE_CONCURRENCY_LIMIT`
 
+### Platforms
+
+Pass target platforms with `-p` (or `FOSSILIZE_PLATFORMS`) using the names from
+the Node.js release archives, such as `darwin-arm64`, `linux-x64`,
+`linux-arm64`, `linux-x64-musl` or `win-x64`. The default is the host's
+`<os>-<arch>`, which never picks a `-musl` build, so pass those explicitly.
+
+Fossilize downloads each platform's Node.js build from [nodejs.org][9]. When
+nodejs.org has no build for a platform, it falls back to the Node.js
+[unofficial builds][10], which is where `linux-arm64-musl` comes from. Every
+download is checked against that release's `SHASUMS256.txt`. The unofficial
+builds do not cover every release, so the build fails with the URLs it tried
+when neither source has the platform for the chosen Node.js version.
+
+The musl binaries need `libstdc++` and `libatomic` at runtime. On Alpine:
+`apk add libstdc++ libatomic`.
+
 ## What is it?
 
 Fossilize is a tool to create Node SEAs (Single Executable Applications)
@@ -130,7 +147,7 @@ build pipeline, optimize the image building process based on dependencies,
 learn how to minimize image size by deleting package manager caches etc.
 On the other hand, if you distribute your application as a Node SEA, then
 all you need to do is copy a single binary into a base Linux distro image
-that has `libc` (sorry Alpine) and you are good to go.
+that has `libc` (or `musl` with the `*-musl` platforms) and you are good to go.
 
 ### Why do I need `fossilize`?
 
@@ -174,3 +191,5 @@ Further documentation will be added about how to obtain and use these.
 [6]: https://docs.deno.com/runtime/reference/cli/compile/
 [7]: https://www.npmjs.com/package/postject
 [8]: https://nodejs.org/api/single-executable-applications.html#seagetrawassetkey
+[9]: https://nodejs.org/dist/
+[10]: https://unofficial-builds.nodejs.org/download/release/

@@ -1,9 +1,10 @@
-import { createWriteStream, openSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream, openSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { finished } from "node:stream/promises";
+import { pipeline } from "node:stream/promises";
 import { unsign } from "macho-unsign";
 import { signatureSet } from "portable-executable-signature";
 import { untar, unzip } from "./archive-util";
@@ -262,6 +263,85 @@ export function resolveNodeVersion(version: string): Promise<string> {
   return _VERSION_CACHE.get(version)!;
 }
 
+// Official builds come first. Platforms nodejs.org does not ship, such as
+// `linux-arm64-musl`, are published by the Node.js unofficial-builds project
+// with the same layout and archive names.
+const NODE_DIST_BASE_URLS = [
+  "https://nodejs.org/dist",
+  "https://unofficial-builds.nodejs.org/download/release",
+];
+
+async function downloadNodeArchive(
+  version: string,
+  archiveName: string,
+  targetFile: string
+): Promise<void> {
+  const triedUrls: string[] = [];
+  for (const baseUrl of NODE_DIST_BASE_URLS) {
+    const url = `${baseUrl}/v${version}/${archiveName}`;
+    const resp = await fetch(url);
+    if (resp.status === 404) {
+      triedUrls.push(url);
+      continue;
+    }
+    if (!resp.ok)
+      throw new Error(
+        `Failed to fetch ${url}: ${resp.status} ${resp.statusText}`
+      );
+    if (!resp.body)
+      throw new Error(
+        `Response body is null for ${url}: ${resp.status} ${resp.statusText}`
+      );
+    if (baseUrl !== NODE_DIST_BASE_URLS[0]) {
+      console.log(`Using unofficial Node.js build: ${url}`);
+    }
+
+    const hash = createHash("sha256");
+    await pipeline(
+      Readable.fromWeb(resp.body),
+      async function* (source: AsyncIterable<Buffer>) {
+        for await (const chunk of source) {
+          hash.update(chunk);
+          yield chunk;
+        }
+      },
+      createWriteStream(targetFile)
+    );
+    const actual = hash.digest("hex");
+    const expected = await getExpectedSha256(baseUrl, version, archiveName);
+    if (actual !== expected) {
+      throw new Error(
+        `Checksum mismatch for ${url}: expected sha256 ${expected}, got ${actual}`
+      );
+    }
+    return;
+  }
+  throw new Error(
+    `No Node.js v${version} build found for ${archiveName}. Tried:\n` +
+      triedUrls.map((url) => `  ${url}`).join("\n")
+  );
+}
+
+async function getExpectedSha256(
+  baseUrl: string,
+  version: string,
+  archiveName: string
+): Promise<string> {
+  const url = `${baseUrl}/v${version}/SHASUMS256.txt`;
+  const resp = await fetch(url);
+  if (!resp.ok)
+    throw new Error(
+      `Failed to fetch ${url}: ${resp.status} ${resp.statusText}`
+    );
+  for (const line of (await resp.text()).split("\n")) {
+    const [hash, name] = line.trim().split(/\s+/);
+    if (name === archiveName && hash) {
+      return hash.toLowerCase();
+    }
+  }
+  throw new Error(`No checksum for ${archiveName} in ${url}`);
+}
+
 export async function getNodeBinary(
   version: string,
   platform: string,
@@ -298,16 +378,14 @@ export async function getNodeBinary(
   }`;
   await fs.mkdir(cacheDir, { recursive: true });
   const nodeDir = await fs.mkdtemp(path.join(cacheDir, remoteArchiveName));
-  const url = `https://nodejs.org/dist/v${resolvedVersion}/${remoteArchiveName}`;
-  const resp = await fetch(url);
-  if (!resp.ok)
-    throw new Error(
-      `Failed to fetch ${url}: ${resp.status} ${resp.statusText}`
-    );
-  if (!resp.body)
-    throw new Error(
-      `Response body is null for ${url}: ${resp.status} ${resp.statusText}`
-    );
+  const archivePath = path.join(nodeDir, remoteArchiveName);
+  try {
+    await downloadNodeArchive(resolvedVersion, remoteArchiveName, archivePath);
+  } catch (err) {
+    // Don't leave a partial or unverified archive behind in the cache dir.
+    await fs.rm(nodeDir, { recursive: true, force: true });
+    throw err;
+  }
 
   const cacheTargetFile = path.join(
     cacheDir,
@@ -319,10 +397,8 @@ export async function getNodeBinary(
   // fossilize instances try to write to the same file. We may add a try-catch
   // block here to recover but we'll cross that bridge when we get there.
   if (platform.startsWith("win")) {
-    const stream = createWriteStream(path.join(nodeDir, remoteArchiveName));
-    await finished(Readable.fromWeb(resp.body).pipe(stream));
     const data = await unzip(
-      stream.path as string,
+      archivePath,
       // Need `/` as path separator, even on Windows as that's how `unzip` works
       `node-v${resolvedVersion}-${platform}/node.exe`
     );
@@ -330,7 +406,10 @@ export async function getNodeBinary(
   } else {
     await fs.writeFile(
       cacheTargetFile,
-      await untar(resp.body, `node-v${resolvedVersion}-${platform}/bin/node`)
+      await untar(
+        Readable.toWeb(createReadStream(archivePath)) as ReadableStream,
+        `node-v${resolvedVersion}-${platform}/bin/node`
+      )
     );
   }
   await fs.chmod(cacheTargetFile, 0o755);

@@ -39,7 +39,8 @@
         "prebuild": "tsc -p src/tsconfig.json",
         "build": "tsup",
         "prepublishOnly": "npm run build",
-        "#postinstall": "npx @stricli/auto-complete@latest install fossilize __fossilize_bash_complete"
+        "#postinstall": "npx @stricli/auto-complete@latest install fossilize __fossilize_bash_complete",
+        "test": "node --test test/node-download.test.mjs"
     },
     "tsup": {
         "entry": [
